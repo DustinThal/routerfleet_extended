@@ -95,6 +95,9 @@ class RouterInformation(models.Model):
     retry_count = models.IntegerField(default=0)
     next_retry = models.DateTimeField(blank=True, null=True)
     last_retrieval = models.DateTimeField(blank=True, null=True)
+    # Set when a user asks for an update from the router list, so the next cron
+    # run picks this router before the regular refresh queue
+    update_requested = models.BooleanField(default=False)
 
     model_name = models.CharField(max_length=100, null=True, blank=True)
     model_version = models.CharField(max_length=100, null=True, blank=True)
@@ -102,6 +105,10 @@ class RouterInformation(models.Model):
 
     os_version = models.CharField(max_length=100, null=True, blank=True)
     firmware_version = models.CharField(max_length=100, null=True, blank=True)
+    # Version the router could be upgraded to, and whether it differs from the
+    # installed one. Empty when the router type has no automatic update check.
+    available_version = models.CharField(max_length=100, null=True, blank=True)
+    update_available = models.BooleanField(default=False)
     architecture = models.CharField(max_length=100, null=True, blank=True)
     cpu = models.CharField(max_length=100, null=True, blank=True)
 

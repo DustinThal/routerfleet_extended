@@ -94,6 +94,9 @@
                                     {% if "firmware_version" in visible_columns %}
                                     <th data-column="firmware_version">Firmware Version</th>
                                     {% endif %}
+                                    {% if "available_version" in visible_columns %}
+                                    <th data-column="available_version">Available Version</th>
+                                    {% endif %}
                                     {% if "architecture" in visible_columns %}
                                     <th data-column="architecture">Architecture</th>
                                     {% endif %}
@@ -239,6 +242,18 @@
                                             {% endif %}
                                         </td>
                                         {% endif %}
+                                        {% if "available_version" in visible_columns %}
+                                        <td data-column="available_version">
+                                            {% if router.router_type != 'monitoring' %}
+                                                {% if router.routerinformation.update_available %}
+                                                    <span class="text-warning" title="Upgrade available">{{ router.routerinformation.available_version }}
+                                                        <i class="fas fa-arrow-up"></i></span>
+                                                {% else %}
+                                                    {{ router.routerinformation.available_version|default_if_none:'' }}
+                                                {% endif %}
+                                            {% endif %}
+                                        </td>
+                                        {% endif %}
                                         {% if "architecture" in visible_columns %}
                                         <td data-column="architecture">
                                             {% if router.router_type != 'monitoring' %}
@@ -267,6 +282,7 @@
                                 <a href="/router/import_tool/" class="btn btn-primary">Import Tool</a>
                                 <button id="select-all" class="btn btn-outline-primary" title="Select All"><i class="fas fa-check-square"></i></button>
                                 <button id="select-none" class="btn btn-outline-primary" title="Select None"><i class="fas fa-square"></i></button>
+                                <button id="update-information" class="btn btn-info" style="display: none;">Update Information</button>
                                 <button id="create-backup" class="btn btn-warning" style="display: none;">Create Backup Task</button>
                                 <button id="run-command" class="btn btn-info" style="display: none;">Run Command</button>
                                 <button id="manage-groups" class="btn btn-primary" style="display: none;">Groups</button>
@@ -306,6 +322,7 @@
             { name: "model_version", label: "Model Version", default: false },
             { name: "serial_number", label: "Serial Number", default: false },
             { name: "firmware_version", label: "Firmware Version", default: false },
+            { name: "available_version", label: "Available Version", default: true },
             { name: "architecture", label: "Architecture", default: false },
             { name: "cpu", label: "CPU", default: false }
         ];
@@ -489,16 +506,58 @@ $(document).ready(function() {
     $(document).on('change', '.router-checkbox', function() {
          var checkedCount = table.$('.router-checkbox:checked').length;
          if (checkedCount >= 1) {
+             $('#update-information').show();
              $('#create-backup').show();
              $('#run-command').show();
              $('#manage-groups').show();
              $('#edit-multiple').show();
          } else {
+             $('#update-information').hide();
              $('#create-backup').hide();
              $('#run-command').hide();
              $('#manage-groups').hide();
              $('#edit-multiple').hide();
          }
+    });
+
+    $('#update-information').on('click', function(e) {
+         e.preventDefault();
+         var selectedRouters = table.$('.router-checkbox:checked').map(function() {
+              return $(this).data('uuid');
+         }).get();
+
+         if (!selectedRouters.length) {
+              return;
+         }
+
+         $.ajax({
+              url: '/router/update_information/multiple/',
+              method: 'POST',
+              data: {
+                   routers: selectedRouters,
+                   csrfmiddlewaretoken: '{{ csrf_token }}'
+              },
+              success: function(response) {
+                   $(document).Toasts('create', {
+                        class: 'bg-success',
+                        title: 'Information Update Started',
+                        body: 'Updating information for ' + response.requested + ' router(s). The list will show the new values shortly.',
+                        delay: 10000,
+                        autohide: true
+                   });
+                   updateCheckboxes(false);
+              },
+              error: function(xhr) {
+                   $(document).Toasts('create', {
+                        class: 'bg-danger',
+                        title: 'Error',
+                        body: 'Error: ' + xhr.responseJSON.error,
+                        delay: 10000,
+                        autohide: true
+                   });
+                   updateCheckboxes(false);
+              }
+         });
     });
 
     $('#create-backup').on('click', function(e) {

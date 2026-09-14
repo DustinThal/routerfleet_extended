@@ -1,4 +1,5 @@
 import json
+import time
 from urllib.parse import unquote
 
 from django.contrib import messages
@@ -15,6 +16,9 @@ from routerlib.router_functions import update_router_information
 from user_manager.models import UserAcl
 from .forms import RouterForm, RouterBulkEditForm, RouterGroupForm, SSHKeyForm
 from .models import Router, RouterGroup, RouterInformation, RouterStatus, SSHKey, BackupSchedule
+
+# How long the information update cron task may run; it is started once per minute
+MAX_UPDATE_INFORMATION_RUNTIME = 50
 
 
 @login_required
@@ -131,13 +135,21 @@ def view_manage_router(request):
                 return redirect('router_list')
         elif request.GET.get('action') == 'refresh_information':
             router_information, created = RouterInformation.objects.get_or_create(router=router)
-            router_information.next_retry = timezone.now()
+            router_information.next_retry = None
             router_information.retry_count = 0
             router_information.success = False
             router_information.error = False
             router_information.error_message = ''
             router_information.save()
-            messages.success(request, 'Router information will be updated shortly')
+            # Run the update right away instead of waiting for the cron task
+            success, error_message = update_router_information(router_information)
+            if success:
+                messages.success(request, 'Router information updated')
+            else:
+                # The message is shown as a "title|body" toast, so the body must not contain a pipe
+                messages.warning(request, 'Router information update failed|' + (
+                    error_message or 'See the router information panel for details.'
+                ).replace('|', '/'))
             return redirect('/router/details/?uuid=' + str(router.uuid))
     else:
         router = None
@@ -303,6 +315,37 @@ def view_create_instant_backup_multiple_routers(request):
 
 
 @login_required
+def view_update_routers_information_multiple(request):
+    """
+    Queue an information update for the selected routers.
+
+    The update itself is done by the update_router_information cron task, which
+    picks requested routers up before its regular refresh queue.
+    """
+    if request.method == 'POST':
+        if not UserAcl.objects.filter(user=request.user, user_level__gte=30).exists():
+            return JsonResponse({'error': 'Permission denied.'}, status=403)
+
+        uuids = request.POST.getlist('routers[]')
+        if not uuids:
+            return JsonResponse({'error': 'No routers selected.'}, status=400)
+
+        requested = 0
+        for router in Router.objects.filter(uuid__in=uuids):
+            router_information, created = RouterInformation.objects.get_or_create(router=router)
+            router_information.update_requested = True
+            router_information.retry_count = 0
+            router_information.error = False
+            router_information.error_message = ''
+            router_information.save()
+            requested += 1
+
+        return JsonResponse({'requested': requested})
+
+    return JsonResponse({'error': 'Invalid request method.'}, status=405)
+
+
+@login_required
 def view_edit_routers_multiple(request):
     if not UserAcl.objects.filter(user=request.user, user_level__gte=30).exists():
         return render(request, 'access_denied.html', {'page_title': 'Access Denied'})
@@ -458,26 +501,45 @@ def view_manage_router_groups_multiple(request):
     return render(request, 'router_manager/manage_router_groups.html', context)
 
 
-def view_cron_update_router_information(request):
-    data = {'status': 'success'}
-    refresh_interval = 24 #hours
-
-    router_list = Router.objects.filter(enabled=True).exclude(router_type='monitoring').exclude(routerstatus__status_online=False)
-    router = router_list.filter(routerinformation__isnull=True).first()
+def _router_due_for_information_update(router_list, refresh_interval):
+    """Next router that needs an information update, requested ones first."""
+    router = router_list.filter(routerinformation__update_requested=True).first()
+    if not router:
+        router = router_list.filter(routerinformation__isnull=True).first()
     if not router:
         router = router_list.filter(routerinformation__next_retry__lt=timezone.now()).first()
     if not router:
         router = router_list.filter(routerinformation__last_retrieval__isnull=True).first()
     if not router:
         router = router_list.filter(routerinformation__last_retrieval__lt=timezone.now() - timezone.timedelta(hours=refresh_interval)).first()
+    return router
 
-    if router:
+
+def view_cron_update_router_information(request):
+    data = {'status': 'success', 'updated': 0, 'failed': 0}
+    refresh_interval = 24 #hours
+    # Work through the queue until the next cron run is due, so that a batch of
+    # requested routers is not spread over one minute per router
+    deadline = time.time() + MAX_UPDATE_INFORMATION_RUNTIME
+
+    router_list = Router.objects.filter(enabled=True).exclude(router_type='monitoring').exclude(routerstatus__status_online=False)
+
+    while time.time() < deadline:
+        router = _router_due_for_information_update(router_list, refresh_interval)
+        if not router:
+            break
         router_information, created = RouterInformation.objects.get_or_create(router=router)
+        if router_information.update_requested:
+            # Clear the request before running, so a crash does not leave it pending forever
+            router_information.update_requested = False
+            router_information.save(update_fields=['update_requested'])
         success, error_message = update_router_information(router_information)
-        if not success:
-            data['status'] = 'error'
-            data['message'] = 'Failed to update router'
-    else:
+        if success:
+            data['updated'] += 1
+        else:
+            data['failed'] += 1
+
+    if not data['updated'] and not data['failed']:
         data['message'] = 'No routers need update'
 
     return JsonResponse(data)

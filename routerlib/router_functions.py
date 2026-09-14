@@ -1,9 +1,23 @@
 import json
 import datetime
+import logging
 import re
+import time
+import requests
 from django.utils import timezone
 from router_manager.models import RouterInformation, Router
 from routerlib.functions import connect_to_ssh
+
+logger = logging.getLogger(__name__)
+
+ROUTEROS_UPDATE_CHECK_DELAY = 5  # seconds to wait for the router to reach MikroTik's update server
+
+OPENWRT_VERSIONS_URL = 'https://downloads.openwrt.org/.versions.json'
+OPENWRT_TARGET_URL = 'https://downloads.openwrt.org/releases/{version}/targets/{board}/profiles.json'
+OPENWRT_RELEASE_CACHE_TTL = 6 * 60 * 60  # seconds
+
+_openwrt_release_cache = {'time': 0, 'stable': '', 'oldstable': ''}
+_openwrt_target_cache = {}
 
 
 def _parse_routeros_key_value_output(output: str) -> dict:
@@ -23,6 +37,93 @@ def _parse_routeros_key_value_output(output: str) -> dict:
         key, val = line.split(':', 1)
         data[key.strip()] = val.strip()
     return data
+
+
+def _get_routeros_update_info(ssh) -> dict:
+    """
+    Ask the router to check MikroTik's update server and read the result back.
+
+    The check runs in the background on the router, so the result only shows up
+    a few seconds after the command has been issued.
+    """
+    ssh.exec_command('/system package update check-for-updates')
+    time.sleep(ROUTEROS_UPDATE_CHECK_DELAY)
+    stdin, stdout, stderr = ssh.exec_command('/system package update print')
+    return _parse_routeros_key_value_output(stdout.read().decode('utf-8', errors='ignore'))
+
+
+def _parse_routeros_update_info(update_info: dict, resource_info: dict) -> tuple:
+    """Return (available_version, update_available) for a RouterOS device."""
+    latest_version = update_info.get('latest-version', '')
+    installed_version = update_info.get('installed-version', '') or resource_info.get('version', '')
+    update_available = bool(latest_version and installed_version and latest_version != installed_version)
+    return latest_version, update_available
+
+
+def _openwrt_release_versions() -> tuple:
+    """
+    Return the (stable, oldstable) OpenWrt release versions.
+
+    Cached for a few hours so that a large fleet does not query the download
+    server once per router.
+    """
+    if time.time() - _openwrt_release_cache['time'] > OPENWRT_RELEASE_CACHE_TTL:
+        # Remember the attempt even when it fails, so an unreachable download
+        # server is not retried for every single router
+        _openwrt_release_cache['time'] = time.time()
+        try:
+            response = requests.get(OPENWRT_VERSIONS_URL, timeout=15)
+            response.raise_for_status()
+            versions = response.json()
+            _openwrt_release_cache['stable'] = versions.get('stable_version', '')
+            _openwrt_release_cache['oldstable'] = versions.get('oldstable_version', '')
+        except Exception as e:
+            logger.warning(f'Could not retrieve the OpenWrt release list: {e}')
+    return _openwrt_release_cache['stable'], _openwrt_release_cache['oldstable']
+
+
+def _openwrt_target_available(version: str, board: str) -> bool:
+    """Whether a release still ships images for the given OpenWrt board."""
+    cache_key = (version, board)
+    if cache_key not in _openwrt_target_cache:
+        available = False
+        try:
+            response = requests.get(
+                OPENWRT_TARGET_URL.format(version=version, board=board), timeout=15, stream=True
+            )
+            available = response.status_code == 200
+            response.close()
+        except Exception as e:
+            logger.warning(f'Could not check OpenWrt release "{version}" for board "{board}": {e}')
+        _openwrt_target_cache[cache_key] = available
+    return _openwrt_target_cache[cache_key]
+
+
+def _version_key(version: str) -> tuple:
+    """Comparable key for release numbers such as '24.10.8'."""
+    return tuple(int(part) if part.isdigit() else 0 for part in re.split(r'[.\-]', version or ''))
+
+
+def get_openwrt_available_version(os_release: dict) -> tuple:
+    """
+    Return (available_version, update_available) for an OpenWrt device.
+
+    Only releases newer than the installed one and that still ship images for
+    the device's board are offered.
+    """
+    installed_version = os_release.get('VERSION_ID', '')
+    board = os_release.get('OPENWRT_BOARD', '')
+    if not installed_version or not board:
+        return '', False
+
+    stable_version, oldstable_version = _openwrt_release_versions()
+    installed_key = _version_key(installed_version)
+    for version in (stable_version, oldstable_version):
+        if not version or _version_key(version) <= installed_key:
+            continue
+        if _openwrt_target_available(version, board):
+            return version, True
+    return '', False
 
 
 def get_router_information(router_information: RouterInformation):
@@ -62,6 +163,17 @@ def get_router_information(router_information: RouterInformation):
             if not success:
                 return False, 'Failed to retrieve router information'
 
+            # A failed update check must not fail the information update itself
+            try:
+                update_info = _get_routeros_update_info(ssh)
+                json_data['/system package update print'] = update_info
+                available_version, update_available = _parse_routeros_update_info(update_info, sr)
+            except Exception as e:
+                logger.warning(f'Update check failed for {router.name}: {e}')
+                available_version, update_available = '', False
+            router_information.available_version = available_version[:field_max_length]
+            router_information.update_available = update_available
+
         elif router.router_type == 'openwrt':
             stdin, stdout, stderr = ssh.exec_command('cat /etc/os-release')
             osrel = {}
@@ -96,6 +208,15 @@ def get_router_information(router_information: RouterInformation):
                 success = True
             if not success:
                 return False, 'Failed to retrieve router information'
+
+            # A failed update check must not fail the information update itself
+            try:
+                available_version, update_available = get_openwrt_available_version(osrel)
+            except Exception as e:
+                logger.warning(f'Update check failed for {router.name}: {e}')
+                available_version, update_available = '', False
+            router_information.available_version = available_version[:field_max_length]
+            router_information.update_available = update_available
 
         elif router.router_type == 'ubiquiti-airos':
             stdin, stdout, stderr = ssh.exec_command('cat /etc/version')
@@ -148,6 +269,9 @@ def get_router_information(router_information: RouterInformation):
                     or cpu_model
                     or board.get('board.cpurevision', '')
             )[:field_max_length]
+            # airOS has no reliable update check over SSH
+            router_information.available_version = ''
+            router_information.update_available = False
             success = True
         else:
             return False, f"Router type not supported: {router.get_router_type_display()}"

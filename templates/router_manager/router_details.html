@@ -172,6 +172,18 @@
                                         </li>
 
                                         <li class="list-group-item">
+                                            <b>Available Version</b>
+                                            <span class="float-right">
+                                                {% if router_information.update_available %}
+                                                    <span class="text-warning">{{ router_information.available_version }}
+                                                        <i class="fas fa-arrow-up" title="Upgrade available"></i></span>
+                                                {% else %}
+                                                    {{ router_information.available_version|default_if_none:"" }}
+                                                {% endif %}
+                                            </span>
+                                        </li>
+
+                                        <li class="list-group-item">
                                             <b>Architeture</b>
                                             <span class="float-right">
                                                 {{ router_information.architecture|default_if_none:"" }}
