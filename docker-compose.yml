@@ -14,7 +14,7 @@ services:
   routerfleet:
     container_name: routerfleet
     restart: unless-stopped
-    image: eduardosilva/routerfleet:latest
+    image: ghcr.io/dustinthal/routerfleet:latest
     environment:
       - SERVER_ADDRESS=${SERVER_ADDRESS}
       - DEBUG_MODE=${DEBUG_MODE}
@@ -39,7 +39,7 @@ services:
   routerfleet-cron:
     container_name: routerfleet-cron
     restart: unless-stopped
-    image: eduardosilva/routerfleet-cron:latest
+    image: ghcr.io/dustinthal/routerfleet-cron:latest
     environment:
       - TZ=${TIMEZONE}
     depends_on:
@@ -48,7 +48,7 @@ services:
   routerfleet-monitoring:
     container_name: routerfleet-monitoring
     restart: unless-stopped
-    image: eduardosilva/routerfleet-monitoring:latest
+    image: ghcr.io/dustinthal/routerfleet-monitoring:latest
     environment:
       - TZ=${TIMEZONE}
     volumes:
@@ -59,7 +59,7 @@ services:
   routerfleet-nginx:
     container_name: routerfleet-nginx
     restart: unless-stopped
-    image: eduardosilva/routerfleet-nginx:latest
+    image: ghcr.io/dustinthal/routerfleet-nginx:latest
     environment:
       - HTTPS_REDIRECT_POLICY=${HTTPS_REDIRECT_POLICY}
       - TZ=${TIMEZONE}

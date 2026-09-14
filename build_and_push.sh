@@ -1,11 +1,20 @@
 #!/bin/bash
 
 IMAGES=(
-  "eduardosilva/routerfleet:latest"
-  "eduardosilva/routerfleet-monitoring:latest"
-  "eduardosilva/routerfleet-nginx:latest"
-  "eduardosilva/routerfleet-cron:latest"
+  "ghcr.io/dustinthal/routerfleet:latest"
+  "ghcr.io/dustinthal/routerfleet-monitoring:latest"
+  "ghcr.io/dustinthal/routerfleet-nginx:latest"
+  "ghcr.io/dustinthal/routerfleet-cron:latest"
 )
+
+login_registry() {
+  if [ -n "$GHCR_USERNAME" ] && [ -n "$GHCR_TOKEN" ]; then
+    echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
+  else
+    echo "Log in to ghcr.io (this script is the manual alternative to the GitHub Actions workflow):"
+    docker login ghcr.io
+  fi
+}
 
 build_images() {
   cat .gitignore > .dockerignore
@@ -32,6 +41,7 @@ push_images() {
   done
 }
 
+login_registry
 docker system prune -a
 build_images
 push_images
