@@ -13,6 +13,12 @@ SUPPORTED_ROUTER_TYPES = [rt[0] for rt in SUPPORTED_ROUTER_TYPES]
 
 
 class CsvDataForm(forms.ModelForm):
+    create_missing_groups = forms.BooleanField(
+        required=False,
+        label='Create missing Router Groups automatically',
+        help_text='Router Groups used in the CSV that do not exist yet will be created when the CSV is saved.',
+    )
+
     class Meta:
         model = CsvData
         fields = ['raw_csv_data']
@@ -24,6 +30,10 @@ class CsvDataForm(forms.ModelForm):
         self.helper.layout = Layout(
             Row(
                 Column('raw_csv_data', css_class='form-group col-md-12 mb-0'),
+                css_class='form-row'
+            ),
+            Row(
+                Column('create_missing_groups', css_class='form-group col-md-12 mb-0'),
                 css_class='form-row'
             ),
             Row(
@@ -115,12 +125,21 @@ class CsvDataForm(forms.ModelForm):
             for ssh_key in ssh_key_list:
                 if not SSHKey.objects.filter(name=ssh_key).exists():
                     raise ValidationError(f"SSH Key '{ssh_key}' does not exist")
-            for router_group in router_group_list:
-                if not RouterGroup.objects.filter(name=router_group).exists():
-                    raise ValidationError(f"Router Group '{router_group}' does not exist")
             for backup_profile in backup_profile_list:
                 if not BackupProfile.objects.filter(name=backup_profile).exists():
                     raise ValidationError(f"Backup Profile '{backup_profile}' does not exist")
+
+            missing_groups = [
+                router_group for router_group in router_group_list
+                if not RouterGroup.objects.filter(name=router_group).exists()
+            ]
+            if missing_groups and not cleaned_data.get('create_missing_groups'):
+                raise ValidationError(
+                    'The following Router Groups do not exist: '
+                    + ', '.join(f"'{router_group}'" for router_group in missing_groups)
+                    + ". Tick 'Create missing Router Groups automatically' if they should be created."
+                )
+            cleaned_data['missing_groups'] = missing_groups
 
             cleaned_data['import_data'] = import_data
         return cleaned_data

@@ -258,6 +258,14 @@ def view_import_csv_file(request):
 
     form = CsvDataForm(request.POST or None)
     if form.is_valid():
+        created_groups = []
+        for group_name in form.cleaned_data.get('missing_groups', []):
+            _, router_group_created = RouterGroup.objects.get_or_create(name=group_name)
+            if router_group_created:
+                created_groups.append(group_name)
+        if created_groups:
+            messages.success(request, 'Router Groups created: ' + ', '.join(created_groups))
+
         csv_data_instance = form.save(commit=False)
         import_data = form.cleaned_data['import_data']
         for row in import_data:
