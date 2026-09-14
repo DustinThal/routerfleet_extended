@@ -52,7 +52,7 @@ Download the appropriate `docker-compose.yml` file directly into your working di
 This is the recommended setup for production environments. Download the `docker-compose.yml` that includes the Postgres database container:
 
 ```bash
-wget -O docker-compose.yml https://raw.githubusercontent.com/eduardogsilva/routerfleet/main/docker-compose.yml
+wget -O docker-compose.yml https://raw.githubusercontent.com/DustinThal/routerfleet_extended/main/docker-compose.yml
 ```
 
 #### Without Postgres (sqlite or remote database)
@@ -60,7 +60,7 @@ wget -O docker-compose.yml https://raw.githubusercontent.com/eduardogsilva/route
 If you prefer to use SQLite or a remote database, download the `docker-compose-no-postgres.yml` file:
 
 ```bash
-wget -O docker-compose.yml https://raw.githubusercontent.com/eduardogsilva/routerfleet/main/docker-compose-no-postgres.yml
+wget -O docker-compose.yml https://raw.githubusercontent.com/DustinThal/routerfleet_extended/main/docker-compose-no-postgres.yml
 ```
 
 ### Step 3: Create the `.env` File
@@ -141,12 +141,12 @@ docker exec -e PGPASSWORD=your_password routerfleet-postgres pg_dump -U routerfl
 
    Download the latest `docker-compose.yml` file from the repository to ensure you're using the most recent version:
    ```bash
-   wget -O docker-compose.yml https://raw.githubusercontent.com/eduardogsilva/routerfleet/main/docker-compose.yml
+   wget -O docker-compose.yml https://raw.githubusercontent.com/DustinThal/routerfleet_extended/main/docker-compose.yml
    ```
    Alternatively, if you're using SQLite or a remote database, download the `docker-compose-no-postgres.yml` file:
    ```bash
    # (alternative) No postgres container 
-   wget -O docker-compose.yml https://raw.githubusercontent.com/eduardogsilva/routerfleet/main/docker-compose-no-postgres.yml
+   wget -O docker-compose.yml https://raw.githubusercontent.com/DustinThal/routerfleet_extended/main/docker-compose-no-postgres.yml
    ```
 
 ### Step 5: Update image files
@@ -167,7 +167,7 @@ docker exec -e PGPASSWORD=your_password routerfleet-postgres pg_dump -U routerfl
 ### Post-Upgrade Checks
 
    - **Verify Operation:** After the services start, access the web interface to ensure routerfleet functions as expected. Examine the application logs for potential issues.
-   - **Support and Troubleshooting:** For any complications or need for further information, consult the project's [Discussions](https://github.com/eduardogsilva/routerfleet/discussions) page or relevant documentation.
+   - **Support and Troubleshooting:** For any complications or need for further information, consult the project's [Discussions](https://github.com/DustinThal/routerfleet_extended/discussions) page or relevant documentation.
 
 Following these instructions will help ensure a smooth upgrade process for your RouterFleet installation, keeping it secure and efficient.
 
@@ -186,8 +186,8 @@ As an open source project, RouterFleet thrives on community support. Whether you
 
 Join our community to get support, share ideas, and collaborate:
 
-- [GitHub Issues](https://github.com/eduardogsilva/routerfleet/issues) for reporting bugs and feature requests.
-- [Discussions](https://github.com/eduardogsilva/routerfleet/discussions) for sharing ideas and getting help from the community.
+- [GitHub Issues](https://github.com/DustinThal/routerfleet_extended/issues) for reporting bugs and feature requests.
+- [Discussions](https://github.com/DustinThal/routerfleet_extended/discussions) for sharing ideas and getting help from the community.
 
 Your support and involvement are crucial in shaping the future of RouterFleet. Let's make network management easier and more secure together!
 
