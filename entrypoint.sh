@@ -85,6 +85,11 @@ if [ ! -f /app_secrets/monitoring_key ]; then
 fi
 echo "MONITORING_KEY = '$(cat /app_secrets/monitoring_key)'" >> $PRODUCTION_SETTINGS_FILE
 
+if [ ! -f /app_secrets/encryption_key ]; then
+    python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())" > /app_secrets/encryption_key
+fi
+echo "ENCRYPTION_KEY = '$(cat /app_secrets/encryption_key)'" >> $PRODUCTION_SETTINGS_FILE
+
 
 sed -i "/^    path('admin\/', admin.site.urls),/s/^    /    # /" /app/routerfleet/urls.py
 

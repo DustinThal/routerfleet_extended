@@ -270,6 +270,7 @@
                                 <button id="create-backup" class="btn btn-warning" style="display: none;">Create Backup Task</button>
                                 <button id="run-command" class="btn btn-info" style="display: none;">Run Command</button>
                                 <button id="manage-groups" class="btn btn-primary" style="display: none;">Groups</button>
+                                <button id="edit-multiple" class="btn btn-primary" style="display: none;">Edit</button>
                             </div>
                         </div>
                     </div>
@@ -491,10 +492,12 @@ $(document).ready(function() {
              $('#create-backup').show();
              $('#run-command').show();
              $('#manage-groups').show();
+             $('#edit-multiple').show();
          } else {
              $('#create-backup').hide();
              $('#run-command').hide();
              $('#manage-groups').hide();
+             $('#edit-multiple').hide();
          }
     });
 
@@ -558,23 +561,39 @@ $(document).ready(function() {
          });
     });
 
+    // Post the selected router uuids to the given url via a hidden form so the
+    // selection never ends up in the URL (large selections would exceed the
+    // server's maximum request line length)
+    function postSelectedRouters(url) {
+        var selectedRouters = table.$('.router-checkbox:checked').map(function() {
+            return $(this).data('uuid');
+        }).get();
+        if (!selectedRouters.length) {
+            return;
+        }
+
+        var $form = $('<form>', {method: 'POST', action: url, style: 'display: none;'});
+        selectedRouters.forEach(function(uuid) {
+            $form.append($('<input>', {type: 'hidden', name: 'routers[]', value: uuid}));
+        });
+        $form.append($('<input>', {type: 'hidden', name: 'csrfmiddlewaretoken', value: '{{ csrf_token }}'}));
+        $('body').append($form);
+        $form.submit();
+    }
+
     $('#manage-groups').on('click', function(e) {
          e.preventDefault();
-         var selectedRouters = table.$('.router-checkbox:checked').map(function() {
-              return $(this).data('uuid');
-         }).get();
-
-         // Redirect to the manage groups page with the selected routers
-         window.location.href = '/router/manage_groups/multiple/?routers[]=' + selectedRouters.join('&routers[]=');
+         postSelectedRouters('/router/manage_groups/multiple/');
     });
 
     $('#run-command').on('click', function (e) {
         e.preventDefault();
-        var selectedRouters = table.$('.router-checkbox:checked').map(function () {
-            return $(this).data('uuid');
-        }).get();
+        postSelectedRouters('/fleet_commander/command/execute_multiple/');
+    });
 
-        window.location.href = '/fleet_commander/command/execute_multiple/?routers[]=' + selectedRouters.join('&routers[]=');
+    $('#edit-multiple').on('click', function(e) {
+        e.preventDefault();
+        postSelectedRouters('/router/edit/multiple/');
     });
 });
 </script>

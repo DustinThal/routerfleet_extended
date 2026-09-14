@@ -1,0 +1,32 @@
+{% extends 'base.html' %}
+{% load crispy_forms_tags %}
+
+{% block content %}
+<div class='row'>
+    <div class='col-lg-8'>
+        <div class="card card-primary card-outline">
+            <div class="card-header">
+                <h3 class="card-title">Edit Multiple Routers</h3>
+            </div>
+            <div class="card-body">
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="row">
+                        <div class="col-md-12">
+                            <h5>Selected Routers ({{ routers|length }}):</h5>
+                            <ul>
+                                {% for router in routers %}
+                                    <li>{{ router.name }}</li>
+                                    <input type="hidden" name="router_uuids" value="{{ router.uuid }}">
+                                {% endfor %}
+                            </ul>
+                            <p class="text-muted">Leave fields blank to keep each router's current value.</p>
+                        </div>
+                    </div>
+                    {% crispy form %}
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

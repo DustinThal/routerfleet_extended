@@ -3,6 +3,7 @@ import uuid
 from django.db import models
 
 from backup.models import BackupProfile
+from routerlib.encryption import EncryptedTextField
 
 SUPPORTED_ROUTER_TYPES = (
     ('monitoring', 'Monitoring Only'),
@@ -32,7 +33,7 @@ class Router(models.Model):
     address = models.CharField(max_length=100)
     port = models.IntegerField(default=22)
     username = models.CharField(max_length=100, default='admin')
-    password = models.CharField(max_length=100, null=True, blank=True)
+    password = EncryptedTextField(null=True, blank=True)
     ssh_key = models.ForeignKey(SSHKey, on_delete=models.SET_NULL, null=True, blank=True)
     monitoring = models.BooleanField(default=True)
     backup_profile = models.ForeignKey(BackupProfile, on_delete=models.SET_NULL, null=True, blank=True)

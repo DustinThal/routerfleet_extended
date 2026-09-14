@@ -22,7 +22,7 @@
         <td>{{ import_task.address }}</td>
         <td>{{ import_task.port }}</td>
         <td>{{ import_task.username }}</td>
-        <td>{{ import_task.password }}</td>
+        <td>{% if import_task.password %}••••••••{% endif %}</td>
         <td>{{ import_task.ssh_key }}</td>
         <td>{{ import_task.router_type }}</td>
         <td>{{ import_task.backup_profile }}</td>

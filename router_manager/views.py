@@ -13,7 +13,7 @@ from backup_data.models import RouterBackup
 from routerfleet_tools.models import WebadminSettings
 from routerlib.router_functions import update_router_information
 from user_manager.models import UserAcl
-from .forms import RouterForm, RouterGroupForm, SSHKeyForm
+from .forms import RouterForm, RouterBulkEditForm, RouterGroupForm, SSHKeyForm
 from .models import Router, RouterGroup, RouterInformation, RouterStatus, SSHKey, BackupSchedule
 
 
@@ -303,11 +303,105 @@ def view_create_instant_backup_multiple_routers(request):
 
 
 @login_required
+def view_edit_routers_multiple(request):
+    if not UserAcl.objects.filter(user=request.user, user_level__gte=30).exists():
+        return render(request, 'access_denied.html', {'page_title': 'Access Denied'})
+
+    if request.method == 'POST':
+        if 'routers[]' in request.POST:
+            # First hop: selection arrives in the request body so the URL never grows
+            # with the number of selected routers
+            router_uuids = [str(uuid) for uuid in Router.objects.filter(
+                uuid__in=request.POST.getlist('routers[]')
+            ).values_list('uuid', flat=True)]
+            if not router_uuids:
+                messages.warning(request, 'No routers selected')
+                return redirect('router_list')
+            request.session['router_selection'] = router_uuids
+            return redirect('edit_router_multiple')
+
+        form = RouterBulkEditForm(request.POST)
+        router_uuids = request.POST.getlist('router_uuids')
+        if form.is_valid():
+            routers = Router.objects.filter(uuid__in=router_uuids)
+            ssh_key_uuid = form.cleaned_data.get('ssh_key')
+            backup_profile_uuid = form.cleaned_data.get('backup_profile')
+            ssh_key = None
+            backup_profile = None
+            if ssh_key_uuid and ssh_key_uuid != 'clear':
+                ssh_key = get_object_or_404(SSHKey, uuid=ssh_key_uuid)
+            if backup_profile_uuid and backup_profile_uuid != 'clear':
+                backup_profile = get_object_or_404(BackupProfile, uuid=backup_profile_uuid)
+
+            updated_count = 0
+            for router in routers:
+                if form.cleaned_data.get('port'):
+                    router.port = form.cleaned_data['port']
+                if form.cleaned_data.get('username'):
+                    router.username = form.cleaned_data['username']
+                if form.cleaned_data.get('monitoring'):
+                    router.monitoring = form.cleaned_data['monitoring'] == 'true'
+                if form.cleaned_data.get('enabled'):
+                    router.enabled = form.cleaned_data['enabled'] == 'true'
+                if backup_profile_uuid:
+                    router.backup_profile = backup_profile
+                if form.cleaned_data.get('internal_notes'):
+                    router.internal_notes = form.cleaned_data['internal_notes']
+                if router.router_type != 'monitoring':
+                    if form.cleaned_data.get('password'):
+                        router.password = form.cleaned_data['password']
+                        router.ssh_key = None
+                    if ssh_key_uuid:
+                        if ssh_key_uuid == 'clear':
+                            router.ssh_key = None
+                        else:
+                            router.ssh_key = ssh_key
+                        if not form.cleaned_data.get('password'):
+                            router.password = ''
+                router.save()
+                updated_count += 1
+
+            request.session.pop('router_selection', None)
+            webadmin_settings, webadmin_settings_created = WebadminSettings.objects.get_or_create(name='webadmin_settings')
+            webadmin_settings.router_config_last_updated = timezone.now()
+            webadmin_settings.save()
+            messages.success(request, f'{updated_count} routers updated successfully')
+            return redirect('router_list')
+    else:
+        form = RouterBulkEditForm()
+
+    router_uuids = request.session.get('router_selection') or request.GET.getlist('routers[]')
+    if not router_uuids:
+        messages.warning(request, 'No routers selected')
+        return redirect('router_list')
+
+    routers = Router.objects.filter(uuid__in=router_uuids)
+    context = {
+        'routers': routers,
+        'form': form,
+        'page_title': 'Edit Multiple Routers',
+    }
+    return render(request, 'router_manager/edit_routers_multiple.html', context=context)
+
+
+@login_required
 def view_manage_router_groups_multiple(request):
     if not UserAcl.objects.filter(user=request.user, user_level__gte=20).exists():
         return render(request, 'access_denied.html', {'page_title': 'Access Denied'})
 
     if request.method == 'POST':
+        if 'routers[]' in request.POST:
+            # First hop: selection arrives in the request body so the URL never grows
+            # with the number of selected routers
+            router_uuids = [str(uuid) for uuid in Router.objects.filter(
+                uuid__in=request.POST.getlist('routers[]')
+            ).values_list('uuid', flat=True)]
+            if not router_uuids:
+                messages.warning(request, 'No routers selected')
+                return redirect('router_list')
+            request.session['router_selection'] = router_uuids
+            return redirect('manage_router_groups_multiple')
+
         router_uuids = request.POST.getlist('router_uuids')
         add_group_uuid = request.POST.get('add_group')
         remove_group_uuid = request.POST.get('remove_group')
@@ -343,10 +437,11 @@ def view_manage_router_groups_multiple(request):
             except RouterGroup.DoesNotExist:
                 messages.error(request, 'Group not found')
 
+        request.session.pop('router_selection', None)
         return redirect('router_list')
 
     # GET request - display form
-    router_uuids = request.GET.getlist('routers[]')
+    router_uuids = request.session.get('router_selection') or request.GET.getlist('routers[]')
     if not router_uuids:
         messages.warning(request, 'No routers selected')
         return redirect('router_list')

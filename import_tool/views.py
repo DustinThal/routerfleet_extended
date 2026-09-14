@@ -4,6 +4,7 @@ from django.contrib.auth.decorators import login_required
 
 from backup.models import BackupProfile
 from router_manager.models import Router, SSHKey, SUPPORTED_ROUTER_TYPES, RouterGroup, RouterStatus
+from routerlib.encryption import decrypt_value, encrypt_value, mask_passwords_in_csv
 from routerlib.functions import test_authentication
 from user_manager.models import UserAcl
 from .models import CsvData, ImportTask
@@ -178,7 +179,7 @@ def view_import_details(request):
                 csv_data=csv_data, import_id=task['import_id'], defaults={
                     'name': task['name'],
                     'username': task['username'],
-                    'password': task['password'],
+                    'password': decrypt_value(task['password']) if task.get('password') else '',
                     'address': task['address'],
                     'port': task['port'],
                     'router_type': task['router_type'],
@@ -258,7 +259,13 @@ def view_import_csv_file(request):
     form = CsvDataForm(request.POST or None)
     if form.is_valid():
         csv_data_instance = form.save(commit=False)
-        csv_data_instance.import_data = form.cleaned_data['import_data']
+        import_data = form.cleaned_data['import_data']
+        for row in import_data:
+            if row.get('password'):
+                row['password'] = encrypt_value(row['password'])
+        csv_data_instance.import_data = import_data
+        # Never keep the password column in cleartext in the raw CSV copy
+        csv_data_instance.raw_csv_data = mask_passwords_in_csv(form.cleaned_data['raw_csv_data'])
         csv_data_instance.save()
 
         messages.success(request, 'CSV data successfully processed and saved.')

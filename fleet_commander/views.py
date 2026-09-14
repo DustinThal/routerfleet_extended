@@ -176,6 +176,18 @@ def view_run_command_multiple(request):
         return render(request, 'access_denied.html', {'page_title': 'Access Denied'})
 
     if request.method == 'POST':
+        if 'routers[]' in request.POST:
+            # First hop: selection arrives in the request body so the URL never grows
+            # with the number of selected routers
+            router_uuids = [str(uuid) for uuid in Router.objects.filter(
+                uuid__in=request.POST.getlist('routers[]')
+            ).values_list('uuid', flat=True)]
+            if not router_uuids:
+                messages.warning(request, 'No routers selected')
+                return redirect('router_list')
+            request.session['router_selection'] = router_uuids
+            return redirect('fleet_commander_execute_multiple')
+
         router_uuids = request.POST.getlist('router_uuids')
         command_uuid = request.POST.get('command')
 
@@ -200,6 +212,7 @@ def view_run_command_multiple(request):
             router_groups=None,
             user=request.user
         )
+        request.session.pop('router_selection', None)
         if job:
             messages.success(request, f'Job created for {job.tasks.count()} targets')
             return redirect(f'/fleet_commander/job/details/?uuid={job.uuid}')
@@ -208,7 +221,7 @@ def view_run_command_multiple(request):
             return redirect('router_list')
 
     # GET request - display form
-    router_uuids = request.GET.getlist('routers[]')
+    router_uuids = request.session.get('router_selection') or request.GET.getlist('routers[]')
     if not router_uuids:
         messages.warning(request, 'No routers selected')
         return redirect('router_list')

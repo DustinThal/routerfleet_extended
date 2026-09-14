@@ -1,6 +1,7 @@
 from django import forms
 from crispy_forms.helper import FormHelper
 from crispy_forms.layout import Layout, Submit, Row, Column, HTML
+from backup.models import BackupProfile
 from .models import Router, RouterGroup, SSHKey
 from routerlib.functions import test_authentication, connect_to_ssh
 import ipaddress
@@ -113,6 +114,76 @@ class RouterForm(forms.ModelForm):
                 raise forms.ValidationError('Could not authenticate: ' + test_authentication_message)
             else:
                 raise forms.ValidationError('Could not authenticate to the router. Please check the credentials and try again.')
+        return cleaned_data
+
+
+class RouterBulkEditForm(forms.Form):
+    # Every field is optional: a blank field means "leave this router's value unchanged"
+    port = forms.IntegerField(required=False, min_value=1, max_value=65535)
+    username = forms.CharField(required=False, max_length=100)
+    password = forms.CharField(required=False, widget=forms.PasswordInput)
+    ssh_key = forms.ChoiceField(required=False)
+    backup_profile = forms.ChoiceField(required=False)
+    monitoring = forms.ChoiceField(required=False, choices=[('', 'Unchanged'), ('true', 'Enable'), ('false', 'Disable')])
+    enabled = forms.ChoiceField(required=False, choices=[('', 'Unchanged'), ('true', 'Enable'), ('false', 'Disable')])
+    internal_notes = forms.CharField(required=False, widget=forms.Textarea(attrs={'rows': 4, 'cols': 40}))
+
+    def __init__(self, *args, **kwargs):
+        super(RouterBulkEditForm, self).__init__(*args, **kwargs)
+        self.fields['ssh_key'].choices = (
+            [('', 'Unchanged'), ('clear', 'Clear SSH key')]
+            + [(str(ssh_key.uuid), ssh_key.name) for ssh_key in SSHKey.objects.all().order_by('name')]
+        )
+        self.fields['backup_profile'].choices = (
+            [('', 'Unchanged'), ('clear', 'Clear backup profile')]
+            + [(str(backup_profile.uuid), backup_profile.name) for backup_profile in BackupProfile.objects.all().order_by('name')]
+        )
+        self.helper = FormHelper()
+        self.helper.form_method = 'post'
+        self.helper.form_tag = False
+        self.helper.layout = Layout(
+            Row(
+                Column('username', css_class='form-group col-md-6 mb-0'),
+                Column('port', css_class='form-group col-md-6 mb-0'),
+                css_class='form-row'
+            ),
+            Row(
+                Column('password', css_class='form-group col-md-6 mb-0'),
+                Column('ssh_key', css_class='form-group col-md-6 mb-0'),
+                css_class='form-row'
+            ),
+            Row(
+                Column('monitoring', css_class='form-group col-md-6 mb-0'),
+                Column('enabled', css_class='form-group col-md-6 mb-0'),
+                css_class='form-row'
+            ),
+            'backup_profile',
+            'internal_notes',
+            Row(
+                Column(
+                    Submit('submit', 'Apply Changes', css_class='btn btn-success'),
+                    HTML(' <a class="btn btn-secondary" href="/router/list/">Cancel</a> '),
+                    css_class='col-md-12'),
+                css_class='form-row'
+            )
+        )
+
+    def clean(self):
+        cleaned_data = super().clean()
+        username = cleaned_data.get('username')
+        if username:
+            username = username.strip()
+            cleaned_data['username'] = username
+
+        updatable_fields = ['port', 'username', 'password', 'ssh_key', 'backup_profile', 'monitoring', 'enabled', 'internal_notes']
+        if not any(cleaned_data.get(field) for field in updatable_fields):
+            raise forms.ValidationError('You must provide at least one field to update')
+
+        ssh_key = cleaned_data.get('ssh_key')
+        if cleaned_data.get('password') and ssh_key and ssh_key != 'clear':
+            raise forms.ValidationError('You must provide a password or an SSH Key, not both')
+        if ssh_key == 'clear' and not cleaned_data.get('password'):
+            raise forms.ValidationError('Clearing the SSH key without setting a password would leave the routers without authentication')
         return cleaned_data
 
 
