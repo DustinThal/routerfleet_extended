@@ -162,6 +162,23 @@
                                 </div>
                                 <div class="card-body p-0">
                                     <pre class="m-0 p-3" style="background-color: #f8f9fa; border: none;"><code>{{ variant.payload }}</code></pre>
+                                    {% if variant.has_verification %}
+                                        <div class="p-3 border-top">
+                                            <b>Verification</b>
+                                            <span class="float-right text-muted">Result is checked on the router</span>
+                                            <pre class="m-0 mt-2" style="background-color: #f8f9fa; border: none;"><code>{{ variant.verify_payload }}</code></pre>
+                                            <div class="mt-2">
+                                                Expected result:
+                                                <ul class="mb-0">
+                                                    {% for expectation in variant.verify_expect.splitlines %}
+                                                        {% if expectation.strip %}
+                                                            <li><code>{{ expectation.strip }}</code></li>
+                                                        {% endif %}
+                                                    {% endfor %}
+                                                </ul>
+                                            </div>
+                                        </div>
+                                    {% endif %}
                                 </div>
                             </div>
                         {% empty %}

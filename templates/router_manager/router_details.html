@@ -372,6 +372,10 @@
                                                     {% else %}
                                                         <span class="badge badge-warning">{{ task.get_status_display }}</span>
                                                     {% endif %}
+                                                    {% if task.verified %}
+                                                        <i class="fas fa-check-double text-success ml-1"
+                                                           title="Result verified on the router"></i>
+                                                    {% endif %}
                                                 </td>
                                                 <td>{{ task.finished_at|default_if_none:"---" }}</td>
 

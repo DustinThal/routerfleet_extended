@@ -9,7 +9,8 @@ from django.utils import timezone
 
 from router_manager.models import Router
 from user_manager.models import UserAcl
-from .command_functions import create_jobs_from_schedules, execute_command_task, create_manual_job
+from .command_functions import build_verification_expectations, create_jobs_from_schedules, \
+    execute_command_task, create_manual_job
 from .forms import CommandForm, CommandVariantForm, CommandScheduleForm, CommandExecuteForm
 from .models import Command, CommandVariant, CommandSchedule, CommandJob, CommandTask
 
@@ -44,11 +45,24 @@ def create_default_commands():
         capture_output=True,
         max_retry=3,
         retry_interval=30,
+        verify_timeout=600,
+        verify_interval=30,
     )
     for router_type in ['routeros', 'routeros-branded']:
         CommandVariant.objects.create(
             command=new_command, router_type=router_type, enabled=True,
-            payload='/system/package/update/set channel=long-term\n/system/package/update/install'
+            # The download is a step of its own, so a missing update file is
+            # visible in the output instead of only failing the install
+            payload='/system/package/update/set channel=long-term\n'
+                    '/system/package/update/check-for-updates\n'
+                    ':delay 5s\n'
+                    '/system/package/update/download\n'
+                    '/system/package/update/install',
+            # The install reboots the router, so the only reliable proof is the
+            # version it reports once it is back online
+            verify_payload='/system/package/update/print\n'
+                           ':put ("installed-version=" . [/system/resource/get version])',
+            verify_expect='installed-version: {{ available_version }}',
         )
     return
 
@@ -120,10 +134,21 @@ def view_manage_command(request):
     <p>Enable or disable the command. Disabled commands cannot be executed.</p>
     
     <strong>Capture Output</strong>
-    <p>If unchecked, RouterFleet executes the command and immediately closes the connection. If checked, RouterFleet will wait for the command to finish to capture its output. Wait times can be long and may delay the execution queue if you have many commands pending. <strong>Only check this if you really need the output.</strong></p>
+    <p>If unchecked, RouterFleet executes the command and immediately closes the connection. If checked, RouterFleet will wait for the command to finish to capture its output. Wait times can be long and may delay the execution queue if you have many commands pending. <strong>Only check this if you really need the output.</strong> The output of a command with a verification is always captured, it is what the verification is checked against.</p>
     
     <strong>Max Retry and Retry Interval</strong>
     <p>Maximum number of retries if the command fails, and the interval (in seconds) between each attempt.</p>
+
+    <strong>Verification</strong>
+    <p>The result of a command can be verified instead of trusting its exit code. The verification commands and
+    their expected result are defined per variant (router type). A task is only successful when the device
+    answers what the variant expects. This is the reliable way to check an update: a router that reboots while
+    it is being updated never returns an exit code at all.</p>
+
+    <strong>Verify Timeout and Verify Interval</strong>
+    <p>How long (in seconds) RouterFleet keeps verifying a command, and how long it waits between two attempts.
+    The payload is only executed once, a later attempt only verifies again, so a device that reboots is not
+    updated twice. The timeout has to be long enough for the device to come back online.</p>
     '''
 
     context = {
@@ -263,10 +288,36 @@ def view_manage_command_variant(request):
         messages.success(request, 'Variant saved successfully')
         return redirect(f'/fleet_commander/command/details/?uuid={command.uuid}')
 
+    form_description_content = '''
+    <strong>Payload</strong>
+    <p>The commands for this router type, one command per line. They are executed in order and the execution
+    stops at the first command that fails.</p>
+
+    <strong>Verification Commands</strong>
+    <p>Optional. Commands that check the result of the payload, one command per line. They are executed after
+    the payload, on a new connection. Leave this empty to keep the exit code of the payload as the result of
+    the task.</p>
+
+    <strong>Expected Result</strong>
+    <p>One expectation per line. Every line has to be found in the output of the verification commands,
+    otherwise the task fails. This is how an update is checked: for example the version the router reports has
+    to be the version that was offered for it. Regular expressions are supported.</p>
+    <p>The placeholders <code>{{ available_version }}</code> (the version RouterFleet found as an update for
+    this router) and <code>{{ current_version }}</code> (the version the router was running before the payload)
+    are replaced with the values known for the router.</p>
+    <p>While the verification does not match, the task is retried and only the verification runs again, until
+    the verify timeout of the command has passed. That gives a router that reboots during an update the time
+    to come back online.</p>
+    '''
+
     context = {
         'form': form,
         'page_title': 'Manage Variant',
         'instance': variant,
+        'form_description': {
+            'size': '',
+            'content': form_description_content
+        },
     }
     return render(request, 'generic_form.html', context)
 
@@ -358,8 +409,14 @@ def view_task_details(request):
     if not UserAcl.objects.filter(user=request.user, user_level__gte=20).exists():
         return render(request, 'access_denied.html', {'page_title': 'Access Denied'})
     task = get_object_or_404(CommandTask, uuid=request.GET.get('uuid'))
+    verification_expectations = []
+    if task.command_variant:
+        verification_expectations = build_verification_expectations(
+            task.command_variant, task.verify_context or {}
+        )
     context = {
         'task': task,
+        'verification_expectations': verification_expectations,
         'page_title': f'Task: {task.router_name or task.router_uuid}',
     }
     return render(request, 'fleet_commander/task_details.html', context)

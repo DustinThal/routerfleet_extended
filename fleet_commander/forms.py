@@ -10,7 +10,8 @@ from .models import Command, CommandVariant, CommandSchedule
 class CommandForm(forms.ModelForm):
     class Meta:
         model = Command
-        fields = ['name', 'description', 'enabled', 'capture_output', 'max_retry', 'retry_interval']
+        fields = ['name', 'description', 'enabled', 'capture_output', 'max_retry', 'retry_interval',
+                  'verify_timeout', 'verify_interval']
 
     def __init__(self, *args, **kwargs):
         super(CommandForm, self).__init__(*args, **kwargs)
@@ -39,6 +40,11 @@ class CommandForm(forms.ModelForm):
             Div(
                 Div(Field('max_retry'), css_class='col-md-6'),
                 Div(Field('retry_interval'), css_class='col-md-6'),
+                css_class='row',
+            ),
+            Div(
+                Div(Field('verify_timeout'), css_class='col-md-6'),
+                Div(Field('verify_interval'), css_class='col-md-6'),
                 css_class='row',
             ),
             Div(
@@ -102,7 +108,7 @@ class CommandExecuteForm(forms.Form):
 class CommandVariantForm(forms.ModelForm):
     class Meta:
         model = CommandVariant
-        fields = ['router_type', 'payload', 'enabled']
+        fields = ['router_type', 'payload', 'verify_payload', 'verify_expect', 'enabled']
 
     def __init__(self, *args, command=None, **kwargs):
         super(CommandVariantForm, self).__init__(*args, **kwargs)
@@ -118,7 +124,22 @@ class CommandVariantForm(forms.ModelForm):
 
         valid_choices = [c for c in SUPPORTED_ROUTER_TYPES if c[0] != 'monitoring' and c[0] not in existing_types]
         self.fields['router_type'].choices = [('', '---------')] + valid_choices
-        
+
+        self.fields['verify_payload'].required = False
+        self.fields['verify_payload'].label = 'Verification commands'
+        self.fields['verify_payload'].widget.attrs['rows'] = 4
+        self.fields['verify_payload'].help_text = (
+            'Optional. Commands that check the result of the payload, one command per line. '
+            'They are executed after the payload and decide whether the task was successful.'
+        )
+        self.fields['verify_expect'].required = False
+        self.fields['verify_expect'].label = 'Expected result'
+        self.fields['verify_expect'].widget.attrs['rows'] = 4
+        self.fields['verify_expect'].help_text = (
+            'One expectation per line. Every line has to be found in the output of the verification commands. '
+            '{{ available_version }} and {{ current_version }} are replaced with the versions known for the router.'
+        )
+
         self.helper = FormHelper()
         self.helper.form_method = 'post'
 
@@ -140,6 +161,11 @@ class CommandVariantForm(forms.ModelForm):
             ),
             Div(
                 Div(Field('payload'), css_class='col-md-12'),
+                css_class='row',
+            ),
+            Div(
+                Div(Field('verify_payload'), css_class='col-md-6'),
+                Div(Field('verify_expect'), css_class='col-md-6'),
                 css_class='row',
             ),
             Div(
@@ -166,7 +192,15 @@ class CommandVariantForm(forms.ModelForm):
                 query = query.exclude(pk=self.instance.pk)
             if query.exists():
                 self.add_error('router_type', 'A variant for this router type already exists for this command.')
-        
+
+        verify_payload = (cleaned_data.get('verify_payload') or '').strip()
+        verify_expect = (cleaned_data.get('verify_expect') or '').strip()
+        if bool(verify_payload) != bool(verify_expect):
+            self.add_error(
+                'verify_expect',
+                'A verification needs both the verification commands and the expected result.'
+            )
+
         return cleaned_data
 
     def save(self, commit=True):

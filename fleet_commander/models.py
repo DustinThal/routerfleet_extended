@@ -19,6 +19,14 @@ class Command(models.Model):
     max_retry = models.IntegerField(default=3)
     retry_interval = models.IntegerField(default=30, help_text="Retry interval in seconds")
 
+    # Verification of the result. The exit code of a command is not reliable on
+    # every router (an update that reboots the device never returns one), so a
+    # variant can define commands that check the result instead.
+    verify_timeout = models.PositiveIntegerField(
+        default=300, help_text="Seconds to keep verifying after the payload has run")
+    verify_interval = models.PositiveIntegerField(
+        default=30, help_text="Seconds between two verification attempts")
+
     updated = models.DateTimeField(auto_now=True)
     created = models.DateTimeField(auto_now_add=True)
     uuid = models.UUIDField(unique=True, editable=False, default=uuid.uuid4)
@@ -99,11 +107,22 @@ class CommandVariant(models.Model):
     router_type = models.CharField(max_length=100, choices=SUPPORTED_ROUTER_TYPES)
     payload = models.TextField()
 
+    # Optional verification. These commands are executed after the payload and
+    # their output decides whether the task was successful. Every line of
+    # verify_expect has to be found in that output. {{ available_version }} and
+    # {{ current_version }} are replaced with the versions known for the router.
+    verify_payload = models.TextField(blank=True, null=True)
+    verify_expect = models.TextField(blank=True, null=True)
+
     enabled = models.BooleanField(default=True)
 
     updated = models.DateTimeField(auto_now=True)
     created = models.DateTimeField(auto_now_add=True)
     uuid = models.UUIDField(unique=True, editable=False, default=uuid.uuid4)
+
+    @property
+    def has_verification(self):
+        return bool((self.verify_payload or '').strip() and (self.verify_expect or '').strip())
 
     class Meta:
         constraints = [
@@ -176,6 +195,16 @@ class CommandTask(models.Model):
     command_payload = models.TextField(blank=True, null=True)
     command_executed = models.TextField(blank=True, null=True)
     command_output = models.TextField(blank=True, null=True)
+
+    # Verification of the result. The payload is executed once; while the
+    # verification has not passed the task is retried and only verifies again, so
+    # a device that reboots in the middle of an update is not updated twice.
+    payload_executed = models.BooleanField(default=False)
+    verify_context = models.JSONField(default=dict, blank=True)
+    verify_deadline = models.DateTimeField(blank=True, null=True)
+    verification_attempts = models.PositiveIntegerField(default=0)
+    verification_output = models.TextField(blank=True, null=True)
+    verified = models.BooleanField(default=False)
 
     status = models.CharField(max_length=100, choices=(('pending', 'Pending'), ('error', 'Error'), ('success', 'Success'), ('aborted', 'Aborted')), default='pending')
     retry_count = models.PositiveIntegerField(default=0)

@@ -41,6 +41,21 @@
                             </span>
                             </li>
                             <li class="list-group-item">
+                                <b>Verified</b>
+                                <span class="float-right">
+                                {% if task.verified %}
+                                    <i class="far fa-check-circle text-success"
+                                       title="The router answered as expected"></i>
+                                {% elif task.verify_deadline %}
+                                    <i class="fas fa-search text-info"
+                                       title="Waiting for the verification to match"></i>
+                                {% else %}
+                                    <i class="far fa-minus-circle text-muted"
+                                       title="No verification defined for this command"></i>
+                                {% endif %}
+                            </span>
+                            </li>
+                            <li class="list-group-item">
                                 <b>Retry Count</b>
                                 <span class="float-right">{{ task.retry_count }}</span>
                             </li>
@@ -94,6 +109,42 @@
                     </div>
                     <div class="card-body">
                         <pre class="mb-0">{{ task.command_output }}</pre>
+                    </div>
+                </div>
+            {% endif %}
+
+            {% if verification_expectations or task.verification_output %}
+                <div class="card card-primary card-outline">
+                    <div class="card-header">
+                        <h3 class="card-title">Verification</h3>
+                        <span class="float-right">
+                            {% if task.verify_deadline %}
+                                Attempt {{ task.verification_attempts }} until {{ task.verify_deadline }}
+                            {% endif %}
+                        </span>
+                    </div>
+                    <div class="card-body">
+                        {% if task.command_variant.verify_payload %}
+                            <p class="mb-1"><b>Verification Commands</b></p>
+                            <pre class="mb-3">{{ task.command_variant.verify_payload }}</pre>
+                        {% endif %}
+                        {% if verification_expectations %}
+                            <p class="mb-1"><b>Expected Result</b></p>
+                            <ul class="mb-3">
+                                {% for expectation in verification_expectations %}
+                                    <li>
+                                        <code>{{ expectation.0 }}</code>
+                                        {% if expectation.1 != expectation.0 %}
+                                            <span class="text-muted">checked as <code>{{ expectation.1 }}</code></span>
+                                        {% endif %}
+                                    </li>
+                                {% endfor %}
+                            </ul>
+                        {% endif %}
+                        {% if task.verification_output %}
+                            <p class="mb-1"><b>Output</b></p>
+                            <pre class="mb-0">{{ task.verification_output }}</pre>
+                        {% endif %}
                     </div>
                 </div>
             {% endif %}

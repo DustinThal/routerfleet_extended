@@ -94,6 +94,13 @@
                                         {% else %}
                                             <span class="badge badge-warning">{{ task.get_status_display }}</span>
                                         {% endif %}
+                                        {% if task.verified %}
+                                            <i class="fas fa-check-double text-success ml-1"
+                                               title="Result verified on the router"></i>
+                                        {% elif task.verify_deadline and task.status == 'pending' %}
+                                            <i class="fas fa-search text-info ml-1"
+                                               title="Verifying the result on the router"></i>
+                                        {% endif %}
                                     </td>
                                     <td>{{ task.started_at|default_if_none:"—" }}</td>
                                     <td>{{ task.finished_at|default_if_none:"—" }}</td>
