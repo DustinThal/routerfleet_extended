@@ -489,8 +489,12 @@ $(document).ready(function() {
     });
 
     // Router selection functions
+    // A filtered out row stays in the page (hidden), so the rows have to be
+    // taken from the table instead of the document: selecting all only selects
+    // what the search filter currently shows, across all of its pages.
     function updateCheckboxes(checked) {
-         table.$('.router-checkbox').prop('checked', checked).trigger('change');
+         var rows = checked ? table.rows({search: 'applied'}) : table.rows();
+         rows.nodes().to$().find('.router-checkbox').prop('checked', checked).trigger('change');
     }
 
     $('#select-all').on('click', function(e) {

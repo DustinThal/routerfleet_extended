@@ -9,6 +9,15 @@ from routerlib.functions import connect_to_ssh
 
 # Placeholders that can be used in the expectations of a verification
 PLACEHOLDER_PATTERN = re.compile(r'\{\{\s*([a-z_]+)\s*\}\}')
+# Line a payload uses to report the version the router offers on its channel
+EXPECTED_VERSION_PATTERN = re.compile(r'expected-version=([^\s]+)')
+# What to do when a placeholder of a verification has no value for a router
+PLACEHOLDER_HINTS = {
+    'available_version': 'Update the router information of the device to know the version it offers.',
+    'current_version': 'Update the router information of the device to know the version it runs.',
+    'expected_version': 'The payload has to report the version the router offers, for example with: '
+                        ':put ("expected-version=" . [/system/package/update/get latest-version])',
+}
 # Upper limit for the recorded verification output of a single task
 MAX_VERIFICATION_OUTPUT = 20000
 
@@ -30,6 +39,17 @@ def get_verification_context(router):
         'available_version': router_information.available_version or '',
         'current_version': router_information.os_version or router_information.model_version or '',
     }
+
+
+def extract_expected_version(output):
+    """The version a payload reported as the one the router offers.
+
+    Which version an update installs depends on the channel the command sets on
+    the router, so the router has to be asked for it. RouterFleet only knows the
+    version of the channel the router was on when it was last read out.
+    """
+    match = EXPECTED_VERSION_PATTERN.search(output or '')
+    return match.group(1).strip() if match else ''
 
 
 def build_verification_expectations(variant, context):
@@ -115,14 +135,18 @@ def verify_command_task(task, variant, command):
         return 'failed', 'Nothing to verify: the variant has no expectation defined'
 
     # A placeholder without a value would never match, so it is not worth waiting
-    # for the timeout. This happens when a new router was never read out yet.
+    # for the timeout. This happens when a new router was never read out yet or
+    # when the payload did not report the version the router offers.
     missing_values = missing_placeholder_values(variant, context)
     if missing_values:
-        return 'failed', (
-            'Cannot verify, no value is known for '
-            + ', '.join("'{{ " + name + " }}'" for name in missing_values)
-            + '. Update the router information of the device first.'
-        )
+        message = ('Cannot verify, no value is known for '
+                   + ', '.join("'{{ " + name + " }}'" for name in missing_values))
+        hints = [PLACEHOLDER_HINTS[name] for name in missing_values if name in PLACEHOLDER_HINTS]
+        if hints:
+            message += '. ' + ' '.join(dict.fromkeys(hints))
+        else:
+            message += '. Update the router information of the device first.'
+        return 'failed', message
 
     if not task.verify_deadline:
         task.verify_deadline = timezone.now() + datetime.timedelta(
@@ -287,6 +311,17 @@ def execute_command_task(task):
                 # For a command with verification the output is always kept, it is
                 # the only record of what the router answered
                 task.command_output = '\n'.join(all_stdout)
+
+            if verification_enabled:
+                # The payload may have reported the version the router offers on
+                # the channel it just set. That is the version to verify, the
+                # version known to the database belongs to the channel from
+                # before the payload ran.
+                expected_version = extract_expected_version(task.command_output)
+                if expected_version:
+                    verify_context = dict(task.verify_context or {})
+                    verify_context['expected_version'] = expected_version
+                    task.verify_context = verify_context
 
         if task_aborted(task):
             pass

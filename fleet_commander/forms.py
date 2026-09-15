@@ -143,7 +143,10 @@ class CommandVariantForm(forms.ModelForm):
         self.fields['verify_expect'].widget.attrs['rows'] = 4
         self.fields['verify_expect'].help_text = (
             'One expectation per line. Every line has to be found in the output of the verification commands. '
-            '{{ available_version }} and {{ current_version }} are replaced with the versions known for the router.'
+            '{{ available_version }} and {{ current_version }} are replaced with the versions known for the router. '
+            '{{ expected_version }} is the version the router offers on the channel the payload set, taken from a '
+            'line the payload prints as "expected-version=...". Use it when the payload changes the update channel, '
+            'the version known to RouterFleet belongs to the channel from before.'
         )
 
         self.helper = FormHelper()

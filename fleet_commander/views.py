@@ -56,13 +56,19 @@ def create_default_commands():
             payload='/system/package/update/set channel=long-term\n'
                     '/system/package/update/check-for-updates\n'
                     ':delay 5s\n'
+                    # The version to install depends on the channel that was just
+                    # set, so the router has to report it: the version known to
+                    # RouterFleet belongs to the channel from before
+                    ':put ("expected-version=" . [/system/package/update/get latest-version])\n'
                     '/system/package/update/download\n'
                     '/system/package/update/install',
             # The install reboots the router, so the only reliable proof is the
-            # version it reports once it is back online
+            # version it reports once it is back online. The print and the
+            # explicit line both write the version the same way, so the
+            # expectation matches either of them
             verify_payload='/system/package/update/print\n'
-                           ':put ("installed-version=" . [/system/resource/get version])',
-            verify_expect='installed-version: {{ available_version }}',
+                           ':put ("installed-version: " . [/system/resource/get version])',
+            verify_expect='installed-version: {{ expected_version }}',
         )
     return
 
@@ -305,6 +311,12 @@ def view_manage_command_variant(request):
     <p>The placeholders <code>{{ available_version }}</code> (the version RouterFleet found as an update for
     this router) and <code>{{ current_version }}</code> (the version the router was running before the payload)
     are replaced with the values known for the router.</p>
+    <p><code>{{ expected_version }}</code> is the version the <strong>router</strong> offers. It is taken from
+    a line the payload has to print, for example
+    <code>:put ("expected-version=" . [/system/package/update/get latest-version])</code>. Use it for a payload
+    that sets the update channel: which version gets installed depends on that channel, while
+    <code>{{ available_version }}</code> is the version RouterFleet read out on the channel the router had
+    before, so the two differ as soon as the payload changes the channel.</p>
     <p>While the verification does not match, the task is retried and only the verification runs again, until
     the verify timeout of the command has passed. That gives a router that reboots during an update the time
     to come back online.</p>
