@@ -10,7 +10,7 @@ from django.utils import timezone
 from router_manager.models import Router
 from user_manager.models import UserAcl
 from .command_functions import build_verification_expectations, create_jobs_from_schedules, \
-    execute_command_task, create_manual_job
+    execute_command_task, create_manual_job, abort_command_task
 from .forms import CommandForm, CommandVariantForm, CommandScheduleForm, CommandExecuteForm
 from .models import Command, CommandVariant, CommandSchedule, CommandJob, CommandTask
 
@@ -420,6 +420,55 @@ def view_task_details(request):
         'page_title': f'Task: {task.router_name or task.router_uuid}',
     }
     return render(request, 'fleet_commander/task_details.html', context)
+
+
+ABORT_CONFIRMATION = 'abort'
+
+
+def abort_confirmed(request):
+    return request.GET.get('confirmation') == ABORT_CONFIRMATION
+
+
+@login_required()
+def view_abort_command_task(request):
+    if not UserAcl.objects.filter(user=request.user, user_level__gte=20).exists():
+        return render(request, 'access_denied.html', {'page_title': 'Access Denied'})
+    task = get_object_or_404(CommandTask, uuid=request.GET.get('uuid'))
+    job = task.job
+
+    if not abort_confirmed(request):
+        messages.warning(request, 'Task not stopped|Invalid confirmation')
+        return redirect(f'/fleet_commander/task/details/?uuid={task.uuid}')
+
+    if abort_command_task(task, request.user):
+        messages.success(request, f'Task for {task.router_name or task.router_uuid} stopped')
+    else:
+        messages.warning(request, 'Task not stopped|Only a task that has not finished yet can be stopped')
+
+    return redirect(f'/fleet_commander/job/details/?uuid={job.uuid}')
+
+
+@login_required()
+def view_abort_command_job(request):
+    if not UserAcl.objects.filter(user=request.user, user_level__gte=20).exists():
+        return render(request, 'access_denied.html', {'page_title': 'Access Denied'})
+    job = get_object_or_404(CommandJob, uuid=request.GET.get('uuid'))
+
+    if not abort_confirmed(request):
+        messages.warning(request, 'Job not stopped|Invalid confirmation')
+        return redirect(f'/fleet_commander/job/details/?uuid={job.uuid}')
+
+    stopped = 0
+    for task in job.tasks.filter(status='pending'):
+        if abort_command_task(task, request.user):
+            stopped += 1
+
+    if stopped:
+        messages.success(request, f'Job stopped|{stopped} pending tasks of this job were aborted')
+    else:
+        messages.warning(request, 'Job not stopped|This job has no pending tasks left')
+
+    return redirect(f'/fleet_commander/job/details/?uuid={job.uuid}')
 
 
 def view_cron_create_command_jobs(request):

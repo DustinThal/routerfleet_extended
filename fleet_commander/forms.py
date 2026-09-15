@@ -18,6 +18,12 @@ class CommandForm(forms.ModelForm):
         self.helper = FormHelper()
         self.helper.form_method = 'post'
 
+        self.fields['max_retry'].help_text = (
+            'Maximum number of attempts if the command fails, the first run included. '
+            'A command with a verification executes its payload once, its attempts at verifying '
+            'are bounded by the verify timeout instead.'
+        )
+
         if self.instance.pk:
             back_url = f'/fleet_commander/command/details/?uuid={self.instance.uuid}'
             delete_html = (

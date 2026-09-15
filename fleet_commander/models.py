@@ -182,7 +182,10 @@ class CommandJob(models.Model):
     def progress_percentage(self):
         if self.task_count == 0:
             return 0
-        return int(((self.success_count + self.error_count) / self.task_count) * 100)
+        # An aborted task is finished as well, a job that was stopped has to
+        # reach 100% instead of staying below it forever
+        finished = self.success_count + self.error_count + self.aborted_count
+        return int((finished / self.task_count) * 100)
 
 
 class CommandTask(models.Model):

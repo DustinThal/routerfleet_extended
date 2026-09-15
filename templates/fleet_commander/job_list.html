@@ -24,6 +24,7 @@
                                     <th><i class="fas fa-hand-paper" title="Aborted tasks"></i></th>
                                     <th>Progress</th>
                                     <th>Created</th>
+                                    <th></th>
                                 </tr>
                                 </thead>
                                 <tbody>
@@ -74,6 +75,15 @@
                                         </span>
                                         <td class="min-width">{{ job.progress_percentage }}%</td>
                                         <td class="min-width">{{ job.created }}</td>
+                                        <td class="min-width">
+                                            {% if not job.completed %}
+                                                <a href="javascript:void(0)"
+                                                   onclick="abortJob('{{ job.uuid }}')"
+                                                   title="Stop this job">
+                                                    <i class="fas fa-hand-paper text-danger"></i>
+                                                </a>
+                                            {% endif %}
+                                        </td>
                                     </tr>
                                 {% endfor %}
                                 </tbody>
@@ -89,4 +99,16 @@
             </div>
         </div>
     </div>
+{% endblock %}
+
+{% block custom_page_scripts %}
+<script>
+    function abortJob(uuid) {
+        var confirmation = prompt("Please type 'abort' to proceed.");
+        if (confirmation !== null) {
+            window.location.href = "/fleet_commander/job/abort/?uuid=" + uuid +
+                "&confirmation=" + encodeURIComponent(confirmation);
+        }
+    }
+</script>
 {% endblock %}

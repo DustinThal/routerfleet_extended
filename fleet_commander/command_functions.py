@@ -161,9 +161,36 @@ def request_router_information_update(router):
         router_information.save(update_fields=['update_requested'])
 
 
+def task_aborted(task):
+    """Whether the task was stopped in the web interface.
+
+    The task is executed by the cron container, the abort comes from the web
+    process, so the state has to be read from the database instead of the
+    instance that is being worked on.
+    """
+    return CommandTask.objects.filter(pk=task.pk, status='aborted').exists()
+
+
+def abort_command_task(task, user=None):
+    """Stops a task that has not finished yet. Returns whether it was stopped."""
+    if task.status != 'pending':
+        return False
+
+    task.status = 'aborted'
+    task.next_retry = None
+    task.finished_at = timezone.now()
+    task.error_message = f'Aborted by {user.username}' if user else 'Aborted'
+    task.save()
+    return True
+
+
 def execute_command_task(task):
     command = task.job.command
     router = task.router
+
+    if task_aborted(task):
+        # Stopped while it was waiting for its next run
+        return
 
     if not router:
         task.status = 'error'
@@ -181,7 +208,6 @@ def execute_command_task(task):
     try:
         task.started_at = task.started_at or timezone.now()
         task.status = 'pending'
-        task.retry_count += 1
 
         variant = task.command_variant
         if not variant:
@@ -199,7 +225,11 @@ def execute_command_task(task):
         verification_enabled = variant.has_verification
 
         if not task.payload_executed:
-            if task.retry_count >= command.max_retry:
+            # Only a run of the payload counts as a retry. The attempts of a
+            # verification are counted separately, they are bounded by the
+            # verify timeout instead of max_retry.
+            task.retry_count += 1
+            if task.retry_count > command.max_retry:
                 task.status = 'error'
                 task.error_message = task.error_message or 'Max retries reached'
                 task.finished_at = timezone.now()
@@ -228,6 +258,10 @@ def execute_command_task(task):
                 line = line.strip()
                 if not line:
                     continue
+                if task_aborted(task):
+                    # Stopped in the meantime, the remaining commands - an
+                    # install in particular - are not executed any more
+                    break
                 try:
                     exit_code, stdout_text, stderr_text = run_fleet_ssh_command(ssh_client, line)
                 except Exception as e:
@@ -254,12 +288,15 @@ def execute_command_task(task):
                 # the only record of what the router answered
                 task.command_output = '\n'.join(all_stdout)
 
-        if verification_enabled:
+        if task_aborted(task):
+            pass
+        elif verification_enabled:
             state, message = verify_command_task(task, variant, command)
             if state == 'success':
                 task.status = 'success'
                 task.verified = True
                 task.error_message = None
+                task.next_retry = None
                 task.finished_at = timezone.now()
                 request_router_information_update(router)
             elif state == 'retry':
@@ -269,9 +306,11 @@ def execute_command_task(task):
             else:
                 task.status = 'error'
                 task.error_message = message
+                task.next_retry = None
                 task.finished_at = timezone.now()
         elif last_exit_code == 0 and not task.error_message:
             task.status = 'success'
+            task.next_retry = None
             task.finished_at = timezone.now()
         else:
             handle_task_retry(task, command)
@@ -287,13 +326,17 @@ def execute_command_task(task):
         router_status.command_lock = None
         router_status.save(update_fields=['command_lock'])
 
-        task.save()
-        check_job_completion(task.job)
+        if not task_aborted(task):
+            task.save()
+            check_job_completion(task.job)
 
 
 def handle_task_retry(task, command):
+    # retry_count was already incremented for the attempt that just failed, so
+    # max_retry attempts have been made once it reaches the configured number
     if task.retry_count >= command.max_retry:
         task.status = 'error'
+        task.next_retry = None
         task.finished_at = timezone.now()
     else:
         task.next_retry = timezone.now() + datetime.timedelta(seconds=command.retry_interval)
