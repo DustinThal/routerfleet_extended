@@ -16,6 +16,12 @@
     </li>
     {% if request.path == '/router/list/' %}
         <li class="nav-item ml-auto">
+            <a class="nav-link" href="#" id="toggleColumnFilters" role="button"
+               title="Show a filter for every column">
+                <i class="fas fa-filter"></i> Filter
+            </a>
+        </li>
+        <li class="nav-item">
             <a class="nav-link" href="#" id="showHideColumnsBtn" role="button">
                 <i class="fas fa-columns"></i> Show/Hide Columns
             </a>
