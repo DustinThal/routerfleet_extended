@@ -6,6 +6,84 @@ Welcome to **RouterFleet** - the next step in centralized router backup and mana
 
 **RouterFleet** is developed with the aim of easing the management of a fleet of devices, particularly focusing on Mikrotik devices during its initial launch phase. This project is a testament to countless hours of dedication towards developing a system that not only simplifies but also secures network management tasks across various devices.
 
+## About this fork
+
+This repository is a fork of [eduardogsilva/routerfleet](https://github.com/eduardogsilva/routerfleet) (forked at `d9e2aa4`) that continues the project with the work described below. Everything RouterFleet does is still here, and the deployment and upgrade instructions in this README already point at this fork's files and images.
+
+## What this fork adds
+
+### Verified commands
+
+Up to now a command counted as successful as soon as the router answered, which says nothing about the result: a device that reboots while it is being updated never returns an exit code at all, and a failed download does not necessarily make the install fail either.
+
+A command variant can now define **verification commands** and the **result they have to show**. The verification runs after the payload and decides whether the task was successful:
+
+- The payload runs **once**. A retry only verifies again, so a device that reboots in the middle of an update is never updated twice.
+- Verification is repeated until the command's *verify timeout* has passed (default 300 s, one attempt every 30 s), which gives a rebooting device time to come back online.
+- Every line of the expected result has to be found in the output of the verification commands. Regular expressions work, so `installed-version: 7\.1[67]\..*` is a valid expectation.
+- Three placeholders are filled in from what RouterFleet knows about the router:
+  - `{{ current_version }}` — the version the device runs
+  - `{{ available_version }}` — the version RouterFleet read from the device's update channel
+  - `{{ expected_version }}` — the version the payload itself reported as being offered (see below)
+- A placeholder with no value fails **immediately** with a hint, instead of sitting in the queue until the verify timeout expires, so an expectation using `{{ current_version }}` or `{{ available_version }}` cannot pass on a router whose information was never read out. `{{ expected_version }}` needs no stored information — it comes from the payload itself.
+- A task whose result was verified queues an information update, so the new version shows up in the router list right away.
+
+The command details page shows the verification of every variant, the job details page and the device page mark the tasks whose result was verified, and the task details page shows the output the verification saw.
+
+### Update commands that survive a channel change
+
+The shipped update command changes the update channel (`/system/package/update/set channel=long-term`). The version RouterFleet has stored for a router was read while that router was still on its **old** channel, so comparing the installed version against it reported a perfectly successful update as failed.
+
+The update payload therefore reports the version the router offers **after** the channel was set:
+
+```
+/system/package/update/set channel=long-term
+/system/package/update/check-for-updates
+:delay 5s
+:put ("expected-version=" . [/system/package/update/get latest-version])
+/system/package/update/download
+/system/package/update/install
+```
+
+with the expectation `installed-version: {{ expected_version }}`. A payload that does not report an expected version fails right away with a hint how to add the line.
+
+Commands that already exist are upgraded by data migrations when you upgrade. Every RouterOS command whose payload uses the package update gets the verification and a 600 s verify timeout (so a device that reboots during the install has time to come back), and a payload that installs a package also gets the `expected-version` line and the `{{ expected_version }}` expectation. A payload you wrote yourself is never replaced — the missing line is inserted into it — and a variant that defines its own verification is left alone.
+
+### Stopping a running job or task
+
+A job that was going wrong could only be waited out. The job list, the job details and the task details now offer a stop button (confirm by typing `abort`), which sets the tasks that have not finished yet to *aborted*.
+
+The executor notices the abort and stops the payload before its next command — an update that was stopped during the download does not install afterwards. A command that is already running on the router cannot be interrupted from another process, so the abort takes effect before the next command or verification.
+
+The same change fixes the run count: every execution used to increment the retry count, including the attempts of a verification, so a task with `max_retry 3` could show a run count of 8. Only a run of the payload counts as a retry now; the verification attempts are counted separately and bounded by the verify timeout. `max_retry` is the number of attempts a command makes in total, the first run included.
+
+### Router Manager
+
+- **Bulk edit:** select routers in the list and press **Edit** to change port, username, password, SSH key, backup profile, monitoring, enabled state and internal notes for all of them at once. A blank field leaves the current value alone. The selection is handed over in a POST request and kept in the session, so editing a few hundred routers no longer overflows the URL length limit. This also fixed the same problem for *Groups* and *Run Command*.
+- **Update Information:** the device page refreshes a router's information immediately and reports the result instead of only queueing it. The router list has an **Update Information** button for the selected routers. Queued-by-hand routers are served before the regular refresh queue, and the cron task works through the whole due queue for up to 50 seconds, so a manual refresh no longer takes hours.
+- **Available version and upgrades:** during the regular information update RouterFleet now finds out what the device could be upgraded to. RouterOS asks its update server, OpenWrt is compared against its release index (only releases that still ship images for the device's board are offered), airOS stays empty. The version is shown on the device page and in the router list, highlighted when an upgrade is available.
+- **Router list filters:** the **Filter** button opens a line of text fields under the column titles — one per column — and each one filters its own column as you type. **Show/Hide Columns** works alongside it. Hiding the filter row clears the filters, so the list is never filtered without a visible reason.
+- **Router list colours:** the firmware version is green while it is on the OS version and red while it stayed behind it. The OS version is green while it is the version the router offers, red while an update is waiting, and yellow while there is no version to compare with (a device whose update check failed, or an airOS device, which has no update check). A device that was never read out has no versions at all and stays uncoloured. Each colour carries the reason in its tooltip.
+- **Select All** now selects what the search shows, not every router in the list. Rows that the search filtered out stay in the page (hidden), so they used to be selected as well.
+
+### Passwords and secrets
+
+Passwords are no longer stored in cleartext:
+
+- `Router.password`, the password of an import task and the passwords inside an imported CSV are encrypted with [Fernet](https://cryptography.io/en/latest/fernet/) symmetric encryption. Everything that connects to a router keeps reading the plaintext, so nothing else had to change.
+- Existing rows are encrypted by a migration when you upgrade.
+- The import details page shows bullets instead of the password, and the stored copy of the uploaded CSV keeps the password column masked.
+
+The encryption key is generated automatically the first time the container starts and is kept in the `app_secrets` volume (`/app_secrets/encryption_key`). There is nothing to configure — but **do keep a copy of that volume**: without the key the stored passwords can no longer be decrypted, and you would have to enter them again.
+
+### Import tool
+
+A router group used in the CSV that did not exist aborted the whole import with `Router Group 'x' does not exist`. The import form now collects *every* missing group and asks about all of them at once: without the new **Create missing Router Groups automatically** checkbox the error lists each unknown group, with the box ticked the groups are created while the CSV is saved. They are created with `get_or_create`, so re-importing a CSV cannot create duplicates.
+
+### Deployment
+
+Docker images are built and published to `ghcr.io/dustinthal` by a GitHub Actions workflow on every push to `main`, and the compose files in this repository already use them. `docker compose pull` therefore picks up this fork's images, not upstream's.
+
 ## Features
 
 - **Centralized Backup Management:** Easily manage backups for your routers and network equipment from a single interface.
@@ -128,6 +206,11 @@ To maintain security, performance, and access to new features in RouterFleet, it
    Before starting the upgrade, it's crucial to back up your database. This step ensures you can revert to the previous state if the upgrade encounters problems. For the database, we recommend manually running a `pg_dump` command to create a backup.
 ```bash
 docker exec -e PGPASSWORD=your_password routerfleet-postgres pg_dump -U routerfleet -d routerfleet > /root/routerfleet-$(date +%Y-%m-%d-%H%M%S).sql
+```
+
+   Also back up the `app_secrets` volume, which holds the key that the router passwords in your database are encrypted with. A database backup without that key cannot restore the passwords. Compose prefixes the volume with the project name — the name of your `routerfleet` directory — so substitute yours (listed by `docker volume ls`) for `<project>`:
+```bash
+docker run --rm -v <project>_app_secrets:/secrets -v "$PWD":/backup alpine tar czf /backup/app_secrets-$(date +%Y-%m-%d-%H%M%S).tar.gz -C /secrets .
 ```
 
 ### Step 3: Shutdown Services
