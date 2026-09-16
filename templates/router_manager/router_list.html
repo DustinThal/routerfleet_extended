@@ -25,6 +25,11 @@
         .address-dropdown .dropdown-item::after {
             content: attr(data-label);
         }
+        /* A filter whose regular expression does not compile yet */
+        .router-column-filter.is-invalid,
+        .dataTables_filter input.is-invalid {
+            border-color: #dc3545;
+        }
     </style>
 {% endblock %}
 
@@ -464,7 +469,9 @@ $(document).ready(function() {
         .off('keyup.DT search.DT input.DT paste.DT cut.DT keypress.DT mouseup')
         .on('input', function() {
             rawGlobalSearch = this.value;
-            applyRouterSearch(table, rawGlobalSearch, true);
+            var applied = applyRouterSearch(table, rawGlobalSearch, true);
+            // A regular expression that is not finished yet
+            globalSearchInput.toggleClass('is-invalid', applied === false);
             restoreGlobalSearchText();
         });
 
@@ -612,24 +619,72 @@ $(document).ready(function() {
     // negation, so it is a regular expression with a negative lookahead: smart
     // search would wrap that into a word lookahead and break it, and the term
     // itself has to be escaped so that a dot or a bracket stays a character.
-    // A bare '!' clears the search again.
+    // A term that starts with '^' is a regular expression of the user's own, and
+    // '(empty)' stands for a column that has no value. A bare '!' clears the
+    // search again.
+    var emptyWord = '(empty)';
+
+    // A column without a value is not an empty cell in the page: this list writes
+    // '---' where there is nothing, and the text DataTables reads out of a cell has
+    // the tags taken out of it and its edges trimmed.
+    var emptyValue = '\\s*(---)?\\s*$';
+
     function applyRouterSearch(searchable, value, smart) {
         var escapeRegex = $.fn.dataTable.util.escapeRegex;
+        var excludes = value.charAt(0) === '!';
+        var term = excludes ? value.slice(1) : value;
 
-        if (value.charAt(0) === '!') {
-            var term = value.slice(1);
-            if (term === '') {
-                searchable.search('', false, false, true).draw();
-                return;
-            }
-            searchable.search('^(?!.*' + escapeRegex(term) + ')', true, false, true).draw();
-            return;
+        if (term === '') {
+            searchable.search('', false, false, true).draw();
+            return true;
+        }
+
+        if (term.toLowerCase() === emptyWord) {
+            // 'Has no value' and 'has a value' are the two sides of one pattern
+            return applyRegexSearch(searchable,
+                excludes ? '^(?!' + emptyValue + ')' : '^' + emptyValue);
+        }
+
+        if (term.charAt(0) === '^') {
+            // The rest of the term is a regular expression. The search box (smart)
+            // looks at the whole row at once and a row starts with the empty
+            // checkbox column, so there the expression is looked for anywhere in
+            // the row; a column filter keeps the anchor, '^7' means the cell
+            // starts with a 7.
+            var expression = term.slice(1);
+            return applyRegexSearch(searchable, excludes
+                ? '^(?!' + (smart ? '.*' : '') + expression + ')'
+                : (smart ? expression : '^' + expression));
+        }
+
+        if (excludes) {
+            return applyRegexSearch(searchable, '^(?!.*' + escapeRegex(term) + ')');
         }
 
         // caseInsen is passed explicitly: left out it counts as false and the
         // search would be case sensitive, unlike the search box of DataTables
-        var isRegex = value.charAt(0) === '^';
-        searchable.search(value, isRegex, smart, true).draw();
+        searchable.search(term, false, smart, true).draw();
+        return true;
+    }
+
+    // A pattern is only handed to DataTables once it compiles: half typed, '^(' is
+    // an error, and the list is left as it is until the pattern is finished.
+    function applyRegexSearch(searchable, pattern) {
+        var compiles = true;
+        try {
+            new RegExp(pattern);
+        }
+        catch (error) {
+            compiles = false;
+        }
+        if (!compiles) {
+            return false;
+        }
+
+        // smart stays off here: with it DataTables wraps the pattern into a
+        // lookahead for every single word and the pattern is destroyed
+        searchable.search(pattern, true, false, true).draw();
+        return true;
     }
 
     // One filter per column, in the header cell under the title of the column.
@@ -647,14 +702,18 @@ $(document).ready(function() {
                 return;
             }
 
-            var input = $('<input type="text" class="router-column-filter form-control form-control-sm" placeholder="Filter (! excludes)">');
+            var input = $('<input type="text" class="router-column-filter form-control form-control-sm" placeholder="Filter (! excludes, (empty) blank, ^ regex)">');
             input.attr('data-column-index', index);
+            input.attr('title', 'text finds it, !text excludes it, ^pattern is a regular ' +
+                'expression, (empty) shows the rows without a value');
             input.on('click', function(event) {
                 // A click in the header would sort the column instead
                 event.stopPropagation();
             });
             input.on('input', function() {
-                applyRouterSearch(tableApi.column(index), input.val(), false);
+                var applied = applyRouterSearch(tableApi.column(index), input.val(), false);
+                // A regular expression that is not finished yet
+                input.toggleClass('is-invalid', applied === false);
             });
 
             var box = $('<div class="router-column-filter-box"></div>');
