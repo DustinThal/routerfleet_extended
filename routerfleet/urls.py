@@ -24,7 +24,7 @@ from router_manager.views import view_create_instant_backup_multiple_routers, vi
     view_create_instant_backup_task, view_router_availability, view_cron_update_router_information, \
     view_manage_router_groups_multiple, view_edit_routers_multiple, view_update_routers_information_multiple
 from routerfleet_tools.views import view_cron_check_updates
-from user_manager.views import view_manage_user, view_user_list
+from user_manager.views import view_manage_user, view_user_list, view_user_settings
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -36,6 +36,7 @@ urlpatterns = [
     path('backup_statistics_data/', backup_statistics_data, name='backup_statistics_data'),
     path('user/list/', view_user_list, name='user_list'),
     path('user/manage/', view_manage_user, name='manage_user'),
+    path('user/settings/', view_user_settings, name='user_settings'),
     path('accounts/create_first_user/', view_create_first_user, name='create_first_user'),
     path('accounts/login/', view_login, name='login'),
     path('accounts/logout/', view_logout, name='logout'),

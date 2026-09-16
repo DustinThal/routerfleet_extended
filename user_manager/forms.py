@@ -5,6 +5,14 @@ from .models import UserAcl
 from django.core.exceptions import ValidationError
 
 
+class UserAddressLinkForm(forms.ModelForm):
+    """The settings every user manages for themselves."""
+
+    class Meta:
+        model = UserAcl
+        fields = ('address_link',)
+
+
 class UserAclForm(UserCreationForm):
     user_level = forms.ChoiceField(choices=UserAcl.user_level.field.choices, required=True, label="User Level")
 

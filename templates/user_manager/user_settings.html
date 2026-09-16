@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-3">
+    <div class="card card-primary card-outline">
+        <div class="card-header">
+            <h3 class="card-title">My Settings</h3>
+        </div>
+        <div class="card-body">
+<div class="row">
+    <div class="col-md-4">
+        <form method="post">
+        {% csrf_token %}
+
+            <!-- Address Link -->
+            <div class="form-group">
+                <label for="{{ form.address_link.id_for_label }}">Router address</label>
+                <select class="form-control" id="{{ form.address_link.id_for_label }}" name="{{ form.address_link.html_name }}">
+                    {% for value, display in form.address_link.field.choices %}
+                        <option value="{{ value }}" {% if form.address_link.value|stringformat:"s" == value|stringformat:"s" %}selected{% endif %}>{{ display }}</option>
+                    {% endfor %}
+                </select>
+                <small class="form-text text-muted">{{ form.address_link.help_text }}</small>
+            </div>
+
+            <div>
+                <button type="submit" class="btn btn-primary">Submit</button>
+            </div>
+        </form>
+    </div>
+
+    <div class="col-md-8">
+        <h5>No links</h5>
+        <p>The address is shown as plain text, as it always was.</p>
+        <h5>Open with SSH</h5>
+        <p>A click on the address opens an SSH session: <code>ssh://username@address:port</code>. Devices without a username or password, and monitoring devices, are shown as plain text.</p>
+        <h5>Open with Winbox</h5>
+        <p>A click on the address opens MikroTik Winbox: <code>winbox://address</code>. Only RouterOS devices offer this, every other device is shown as plain text.</p>
+        <h5>Show a menu (SSH / Winbox)</h5>
+        <p>Moving the mouse over the address opens a menu with both entries. Only the ones the device supports are offered, so a device that is not a RouterOS device keeps the plain SSH link.</p>
+    </div>
+</div>
+
+    </div>
+    </div>
+</div>
+{% endblock %}

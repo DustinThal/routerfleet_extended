@@ -12,6 +12,19 @@
             min-width: 5rem;
             font-weight: 400;
         }
+        /* The address of a router opens SSH and/or Winbox, see the address cell */
+        .address-dropdown:hover .dropdown-menu {
+            display: block;
+        }
+        /*
+         * The labels of the two entries come from the attribute, not from text in
+         * the cell: the export and the column filter read the text of a cell, and
+         * an address cell that carries the words 'SSH Winbox' would show them in
+         * the CSV and match a search for them.
+         */
+        .address-dropdown .dropdown-item::after {
+            content: attr(data-label);
+        }
     </style>
 {% endblock %}
 
@@ -132,7 +145,30 @@
                                         <td data-column="type">{{ router.get_router_type_display }}</td>
                                         {% endif %}
                                         {% if "address" in visible_columns %}
-                                        <td data-column="address">{{ router.address }}</td>
+                                        <td data-column="address">
+                                            {# What a click on the address does is a per user setting #}
+                                            {% if address_link == 'none' or not router.username or router.router_type == 'monitoring' %}
+                                                {{ router.address }}
+                                            {% elif address_link == 'ssh' %}
+                                                <a href="ssh://{{ router.username }}@{{ router.address }}:{{ router.port }}">{{ router.address }}</a>
+                                            {% elif address_link == 'winbox' %}
+                                                {% if router.router_type == 'routeros' or router.router_type == 'routeros-branded' %}
+                                                    <a href="winbox://{{ router.address }}">{{ router.address }}</a>
+                                                {% else %}
+                                                    {{ router.address }}
+                                                {% endif %}
+                                            {% elif router.router_type == 'routeros' or router.router_type == 'routeros-branded' %}
+                                                <div class="dropdown d-inline address-dropdown">
+                                                    <a class="dropdown-toggle" href="#" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">{{ router.address }}</a>
+                                                    <div class="dropdown-menu">
+                                                        <a class="dropdown-item" href="ssh://{{ router.username }}@{{ router.address }}:{{ router.port }}" aria-label="Open SSH" data-label="SSH"></a>
+                                                        <a class="dropdown-item" href="winbox://{{ router.address }}" aria-label="Open Winbox" data-label="Winbox"></a>
+                                                    </div>
+                                                </div>
+                                            {% else %}
+                                                <a href="ssh://{{ router.username }}@{{ router.address }}:{{ router.port }}">{{ router.address }}</a>
+                                            {% endif %}
+                                        </td>
                                         {% endif %}
                                         {% if "status" in visible_columns %}
                                         <td data-column="status" id="status-{{ router.uuid }}">
@@ -301,6 +337,7 @@
                                 <a href="/router/import_tool/" class="btn btn-primary">Import Tool</a>
                                 <button id="select-all" class="btn btn-outline-primary" title="Select All"><i class="fas fa-check-square"></i></button>
                                 <button id="select-none" class="btn btn-outline-primary" title="Select None"><i class="fas fa-square"></i></button>
+                                <button id="export-csv" class="btn btn-outline-primary" title="Export the filtered list as CSV"><i class="fas fa-file-csv"></i></button>
                                 <button id="update-information" class="btn btn-info" style="display: none;">Update Information</button>
                                 <button id="create-backup" class="btn btn-warning" style="display: none;">Create Backup Task</button>
                                 <button id="run-command" class="btn btn-info" style="display: none;">Run Command</button>
@@ -413,6 +450,67 @@ $(document).ready(function() {
 
     setupColumnFilters(table);
 
+    // The search box of DataTables is replaced by one that understands '!'. The
+    // handler of DataTables keeps the text of the search and writes it back into
+    // the box whenever something else filters the table; with a negation that
+    // text is a regular expression, so the text the user typed is kept aside
+    // and put back.
+    var globalSearchInput = $('.dataTables_filter input', table.table().container());
+    var rawGlobalSearch = globalSearchInput.val();
+
+    globalSearchInput
+        // The namespaces are those DataTables binds; the mouseup that clears the
+        // search field has no namespace and is named on its own
+        .off('keyup.DT search.DT input.DT paste.DT cut.DT keypress.DT mouseup')
+        .on('input', function() {
+            rawGlobalSearch = this.value;
+            applyRouterSearch(table, rawGlobalSearch, true);
+            restoreGlobalSearchText();
+        });
+
+    // Bound after the handler of DataTables, so this one has the last word
+    $(table.table().node()).on('search.dt', function(event, settings) {
+        if (settings === table.settings()[0] && globalSearchInput[0] !== document.activeElement) {
+            restoreGlobalSearchText();
+        }
+    });
+
+    // Only write when the text differs: writing the same text again would put
+    // the cursor to the end while somebody is typing in the middle of it
+    function restoreGlobalSearchText() {
+        if (globalSearchInput.val() !== rawGlobalSearch) {
+            globalSearchInput.val(rawGlobalSearch);
+        }
+    }
+
+    // The export button writes the rows the search currently shows, with the
+    // columns that are visible - the ones without a data-column (checkbox and
+    // edit) are not part of a router list. The Buttons extension of DataTables
+    // does the writing, it has to be given an instance of its own first: the
+    // table was created without one, and button().add() on a table without a
+    // Buttons instance does nothing at all.
+    var csvButtonAdded = false;
+    $('#export-csv').on('click', function(event) {
+        event.preventDefault();
+
+        if (!csvButtonAdded) {
+            new $.fn.dataTable.Buttons(table, []);
+            table.button().add(0, {
+                extend: 'csv',
+                filename: 'router-list-' + new Date().toISOString().slice(0, 10),
+                bom: true,
+                exportOptions: {
+                    columns: function(index, data, node) {
+                        return $(node).attr('data-column') !== undefined;
+                    }
+                }
+            });
+            csvButtonAdded = true;
+        }
+
+        table.button(0).trigger();
+    });
+
     // Column visibility functions
     function getCookie(name) {
         var cookieValue = null;
@@ -509,6 +607,30 @@ $(document).ready(function() {
         window.location.href = currentUrl;
     });
 
+    // A term that starts with '!' excludes everything that contains it, the way
+    // the router list search should have always worked. DataTables has no
+    // negation, so it is a regular expression with a negative lookahead: smart
+    // search would wrap that into a word lookahead and break it, and the term
+    // itself has to be escaped so that a dot or a bracket stays a character.
+    // A bare '!' clears the search again.
+    function applyRouterSearch(searchable, value, smart) {
+        var escapeRegex = $.fn.dataTable.util.escapeRegex;
+
+        if (value.charAt(0) === '!') {
+            var term = value.slice(1);
+            if (term === '') {
+                searchable.search('', false, false, true).draw();
+                return;
+            }
+            searchable.search('^(?!.*' + escapeRegex(term) + ')', true, false, true).draw();
+            return;
+        }
+
+        // caseInsen is passed explicitly: left out it counts as false and the
+        // search would be case sensitive, unlike the search box of DataTables
+        searchable.search(value, false, smart, true).draw();
+    }
+
     // One filter per column, in the header cell under the title of the column.
     // Every column keeps its filter above itself, also when columns are hidden
     // or the window is narrow.
@@ -524,14 +646,14 @@ $(document).ready(function() {
                 return;
             }
 
-            var input = $('<input type="text" class="router-column-filter form-control form-control-sm" placeholder="Filter">');
+            var input = $('<input type="text" class="router-column-filter form-control form-control-sm" placeholder="Filter (! excludes)">');
             input.attr('data-column-index', index);
             input.on('click', function(event) {
                 // A click in the header would sort the column instead
                 event.stopPropagation();
             });
             input.on('input', function() {
-                tableApi.column(index).search(input.val(), false, false).draw();
+                applyRouterSearch(tableApi.column(index), input.val(), false);
             });
 
             var box = $('<div class="router-column-filter-box"></div>');

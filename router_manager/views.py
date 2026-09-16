@@ -66,6 +66,8 @@ def view_router_list(request):
         'filter_group': filter_group,
         'last_status_change_timestamp': last_status_change_timestamp,
         'visible_columns': visible_columns,
+        # Not every user has a UserAcl row, the first user created has none
+        'address_link': UserAcl.objects.filter(user=request.user).values_list('address_link', flat=True).first() or 'none',
     }
     return render(request, 'router_manager/router_list.html', context=context)
 

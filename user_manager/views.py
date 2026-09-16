@@ -1,10 +1,23 @@
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect, get_object_or_404
 from user_manager.models import UserAcl
-from .forms import UserAclForm
+from .forms import UserAclForm, UserAddressLinkForm
 from django.contrib.auth.models import User
 from django.contrib import messages
 from django.contrib.sessions.models import Session
+
+
+@login_required
+def view_user_settings(request):
+    """The settings a user changes for themselves, no user level required."""
+    user_acl, created = UserAcl.objects.get_or_create(user=request.user)
+    form = UserAddressLinkForm(request.POST or None, instance=user_acl)
+    if request.method == 'POST' and form.is_valid():
+        form.save()
+        messages.success(request, 'Settings saved|Your settings have been updated.')
+        return redirect('/user/settings/')
+    context = {'page_title': 'My Settings', 'form': form}
+    return render(request, 'user_manager/user_settings.html', context)
 
 
 @login_required
