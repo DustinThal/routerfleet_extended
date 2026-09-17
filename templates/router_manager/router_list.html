@@ -628,7 +628,8 @@ $(document).ready(function() {
 
         // caseInsen is passed explicitly: left out it counts as false and the
         // search would be case sensitive, unlike the search box of DataTables
-        searchable.search(value, false, smart, true).draw();
+        var isRegex = value.charAt(0) === '^';
+        searchable.search(value, isRegex, smart, true).draw();
     }
 
     // One filter per column, in the header cell under the title of the column.
