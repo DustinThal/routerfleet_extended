@@ -84,6 +84,28 @@ A command schedule can **exclude** devices and groups. An exclusion always wins,
 
 A single device is excluded the same way, without touching its groups. The list of schedules says what each one runs on (`3 devices, 1 excluded`), and a schedule whose every device is excluded is refused when it is saved instead of being left behind doing nothing. Remove an exclusion and the devices are picked up again on the next run.
 
+### Schedule defaults
+
+A schedule needs a moment to begin at and an interval to repeat in, and both are usually the same for all of them — the hour the maintenance window opens, the week it comes back. **Schedule Defaults** (from the Fleet Commander page) sets them once:
+
+- **Default Start Time** — the time of day. A schedule that is created starts at the *next* time this comes around, so it does not begin in the past.
+- **Default Repeat Interval** — `7d`, `24h`, `30m`, or empty/`0` for a single run.
+
+Only the form of a **new** schedule is filled from here. Schedules that already exist keep the start time and the interval they were saved with, so changing a default never moves a job that is already set up.
+
+Editing a schedule shows its start and end time again as well: they were written into the date/time fields in a form the browser does not accept, so they came up empty and the moment had to be typed in again for every change.
+
+The same values can be set from the command line, which is also how an installation is configured from a script or a container:
+
+```
+python manage.py schedule_defaults                          # show what is in use
+python manage.py schedule_defaults --start-time 03:00 --repeat 7d
+python manage.py schedule_defaults --repeat 0               # new schedules run once
+python manage.py schedule_defaults --reset                  # back to 03:00 / 7d
+```
+
+In the container that is `docker compose exec routerfleet python manage.py schedule_defaults --start-time 03:00 --repeat 7d`.
+
 ### What a backup changed
 
 Every backup now records whether it brought a different configuration than the backup before it — the field the little branch icon in the backup list has been promising without anything ever filling it. A backup that failed to read a configuration is looked past, so the comparison always reaches the last configuration that was really seen, and the very first backup of a device is no change: it is the one the later backups are measured against, not a change of anything.

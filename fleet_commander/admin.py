@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Command, CommandVariant, CommandSchedule, CommandJob, CommandTask
+from .models import Command, CommandVariant, CommandSchedule, CommandJob, CommandTask, ScheduleDefaults
 
 
 class CommandAdmin(admin.ModelAdmin):
@@ -32,3 +32,8 @@ class CommandTaskAdmin(admin.ModelAdmin):
     search_fields = ('job__command__name', 'router__name')
     list_filter = ('status', 'created', 'updated')
 admin.site.register(CommandTask, CommandTaskAdmin)
+
+class ScheduleDefaultsAdmin(admin.ModelAdmin):
+    list_display = ('name', 'start_time', 'repeat_interval', 'created', 'updated')
+    readonly_fields = ('created', 'updated', 'uuid')
+admin.site.register(ScheduleDefaults, ScheduleDefaultsAdmin)

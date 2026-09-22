@@ -4,7 +4,12 @@ from django import forms
 
 from router_manager.models import Router
 from router_manager.models import SUPPORTED_ROUTER_TYPES
-from .models import Command, CommandVariant, CommandSchedule
+from .models import Command, CommandVariant, CommandSchedule, ScheduleDefaults, parse_interval
+
+# How a moment is written into a datetime-local input, and read back out of one.
+# The widget would otherwise use the first localized input format, which is
+# "2026-09-22 03:00:00" - a value that input refuses, leaving the field empty.
+DATETIME_LOCAL_FORMAT = '%Y-%m-%dT%H:%M'
 
 
 class CommandForm(forms.ModelForm):
@@ -222,15 +227,17 @@ class CommandVariantForm(forms.ModelForm):
 
 
 class CommandScheduleForm(forms.ModelForm):
-    repeat_interval = forms.CharField(label='Repeat Interval', initial='7d', required=True)
+    repeat_interval = forms.CharField(label='Repeat Interval', initial='7d', required=False)
 
     class Meta:
         model = CommandSchedule
         fields = ['enabled', 'router', 'router_group', 'exclude_router',
                   'exclude_router_group', 'start_at', 'end_at']
         widgets = {
-            'start_at': forms.DateTimeInput(attrs={'type': 'datetime-local'}),
-            'end_at': forms.DateTimeInput(attrs={'type': 'datetime-local'}),
+            'start_at': forms.DateTimeInput(attrs={'type': 'datetime-local'},
+                                            format=DATETIME_LOCAL_FORMAT),
+            'end_at': forms.DateTimeInput(attrs={'type': 'datetime-local'},
+                                          format=DATETIME_LOCAL_FORMAT),
         }
 
     def __init__(self, *args, command=None, **kwargs):
@@ -239,9 +246,23 @@ class CommandScheduleForm(forms.ModelForm):
         self.helper = FormHelper()
         self.helper.form_method = 'post'
         self.fields['start_at'].required = True
+        for name in ('start_at', 'end_at'):
+            # The value a datetime-local input sends is written the same way it is
+            # shown, so it is read back that way as well - before the localized
+            # formats, which do not know the "T"
+            self.fields[name].input_formats = [DATETIME_LOCAL_FORMAT] + list(
+                self.fields[name].input_formats)
 
-        if self.instance.pk and self.instance.repeat_interval:
+        if self.instance.pk:
+            # A schedule that exists shows what it was saved with, also when that is
+            # a single run
             self.fields['repeat_interval'].initial = self.instance.repeat_interval_display
+        else:
+            # A schedule that is created starts out as the global defaults say.
+            # One that exists keeps what it was saved with.
+            defaults = ScheduleDefaults.load()
+            self.fields['start_at'].initial = defaults.next_start_at()
+            self.fields['repeat_interval'].initial = defaults.repeat_interval_display
 
         if self.instance.pk:
             back_uuid = self.instance.command.uuid
@@ -285,28 +306,10 @@ class CommandScheduleForm(forms.ModelForm):
         )
 
     def clean_repeat_interval(self):
-        val = self.cleaned_data.get('repeat_interval', '').strip().lower()
-        if not val:
-            raise forms.ValidationError("You must specify a repeat interval.")
-        
-        if not (val.endswith('d') or val.endswith('h') or val.endswith('m')):
-            raise forms.ValidationError("You must specify 'd' for days, 'h' for hours, or 'm' for minutes (e.g. 7d, 24h, 30m).")
-        
-        unit = val[-1]
         try:
-            num = int(val[:-1].strip())
-        except ValueError:
-            raise forms.ValidationError("Invalid number before the unit.")
-        
-        if num < 1:
-            raise forms.ValidationError("Repeat interval must be at least 1 minute.")
-        
-        if unit == 'd':
-            return num * 1440
-        elif unit == 'h':
-            return num * 60
-        else:
-            return num
+            return parse_interval(self.cleaned_data.get('repeat_interval'))
+        except ValueError as error:
+            raise forms.ValidationError(str(error))
 
     def clean(self):
         cleaned_data = super().clean()
@@ -337,3 +340,53 @@ class CommandScheduleForm(forms.ModelForm):
             instance.save()
             self.save_m2m()
         return instance
+
+
+class ScheduleDefaultsForm(forms.ModelForm):
+    """The values a new schedule is created with. It changes nothing about the
+    schedules that already exist."""
+
+    start_time = forms.TimeField(
+        label='Start Time', input_formats=['%H:%M', '%H:%M:%S'],
+        widget=forms.TimeInput(attrs={'type': 'time'}, format='%H:%M'),
+        help_text='The time of day a new schedule begins at. It starts at the next '
+                  'time this comes around.')
+    repeat_interval = forms.CharField(
+        label='Repeat Interval', initial='7d', required=False,
+        help_text="How often a new schedule repeats: 7d, 24h, 30m. Leave it empty "
+                  "or set it to 0 for a single run.")
+
+    class Meta:
+        model = ScheduleDefaults
+        fields = ['start_time', 'repeat_interval']
+
+    def __init__(self, *args, **kwargs):
+        super(ScheduleDefaultsForm, self).__init__(*args, **kwargs)
+        self.helper = FormHelper()
+        self.helper.form_method = 'post'
+        if self.instance.pk:
+            # The model holds minutes, the form is filled with the interval as it is
+            # written. It goes into initial, not into the field: what comes from the
+            # instance would win over the field either way.
+            self.initial['repeat_interval'] = self.instance.repeat_interval_display
+
+        self.helper.layout = Layout(
+            Div(
+                Div(Field('start_time'), css_class='col-md-6'),
+                Div(Field('repeat_interval'), css_class='col-md-6'),
+                css_class='row',
+            ),
+            Row(
+                Column(
+                    Submit('submit', 'Save', css_class='btn btn-success'),
+                    HTML(' <a class="btn btn-secondary" href="/fleet_commander/">Back</a> '),
+                    css_class='col-md-12'
+                )
+            ),
+        )
+
+    def clean_repeat_interval(self):
+        try:
+            return parse_interval(self.cleaned_data.get('repeat_interval'))
+        except ValueError as error:
+            raise forms.ValidationError(str(error))

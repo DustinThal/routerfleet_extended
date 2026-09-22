@@ -11,8 +11,10 @@ from router_manager.models import Router
 from user_manager.models import UserAcl
 from .command_functions import build_verification_expectations, create_jobs_from_schedules, \
     execute_command_task, create_manual_job, abort_command_task
-from .forms import CommandForm, CommandVariantForm, CommandScheduleForm, CommandExecuteForm
-from .models import Command, CommandVariant, CommandSchedule, CommandJob, CommandTask
+from .forms import CommandForm, CommandVariantForm, CommandScheduleForm, CommandExecuteForm, \
+    ScheduleDefaultsForm
+from .models import Command, CommandVariant, CommandSchedule, CommandJob, CommandTask, \
+    ScheduleDefaults
 
 
 def create_default_commands():
@@ -393,6 +395,56 @@ def view_manage_command_schedule(request):
         'form': form,
         'page_title': 'Manage Schedule',
         'instance': schedule,
+        'form_description': {
+            'size': '',
+            'content': form_description_content
+        },
+    }
+    return render(request, 'generic_form.html', context)
+
+
+@login_required()
+def view_schedule_defaults(request):
+    """The values a new schedule is created with.
+
+    They belong to the installation, not to a command, so they stand here once
+    instead of in every schedule. A schedule that already exists keeps what it
+    was saved with - only the form of a new one is filled from here.
+    """
+    if not UserAcl.objects.filter(user=request.user, user_level__gte=40).exists():
+        return render(request, 'access_denied.html', {'page_title': 'Access Denied'})
+
+    schedule_defaults = ScheduleDefaults.load()
+
+    form = ScheduleDefaultsForm(request.POST or None, instance=schedule_defaults)
+    if form.is_valid():
+        form.save()
+        messages.success(request, 'Schedule defaults saved successfully')
+        return redirect('schedule_defaults')
+
+    form_description_content = '''
+    <strong>Default Start Time</strong>
+    <p>The time of day a new schedule begins at. A schedule that is created starts at the next
+    time this comes around, so an installation that keeps its maintenance window at 03:00 does
+    not have to have it typed in for every command.</p>
+
+    <strong>Default Repeat Interval</strong>
+    <p>How often a new schedule repeats, in the same units the schedule itself takes: <code>d</code>
+    for days, <code>h</code> for hours, <code>m</code> for minutes. Empty or <code>0</code> means a
+    new schedule is created for a single run.</p>
+
+    <strong>What this does not change</strong>
+    <p>These values fill the form of a schedule that is being created. Schedules that already exist
+    keep the start time and the interval they were saved with, so changing a default here never
+    moves a job that is already set up.</p>
+    <p>The same values can be set from the command line:
+    <code>python manage.py schedule_defaults --start-time 03:00 --repeat 7d</code></p>
+    '''
+
+    context = {
+        'form': form,
+        'page_title': 'Schedule Defaults',
+        'instance': schedule_defaults,
         'form_description': {
             'size': '',
             'content': form_description_content

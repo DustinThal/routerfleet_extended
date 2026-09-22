@@ -1,3 +1,4 @@
+import datetime
 import uuid
 from datetime import timedelta
 
@@ -7,6 +8,48 @@ from django.db.models import Count, Q
 from django.utils import timezone
 
 from router_manager.models import Router, RouterGroup, SUPPORTED_ROUTER_TYPES
+
+INTERVAL_UNIT_ERROR = ("You must specify 'd' for days, 'h' for hours, or 'm' for minutes "
+                       "(e.g. 7d, 24h, 30m).")
+# What "no repeat" may be written as, so that a value the interface prints can be
+# typed back in
+INTERVAL_ONE_TIME = ('', '0', 'none', 'off', 'one time')
+
+
+def parse_interval(value) -> int:
+    """Minutes from an interval as it is typed: 7d, 24h, 30m.
+
+    Nothing, 0, or one of the words for it is a single run, which the model holds
+    as 0. Raises ValueError with a message that can be shown as it is, so the
+    form and the command line say the same thing about what they refused.
+    """
+    text = str(value if value is not None else '').strip().lower()
+    if text in INTERVAL_ONE_TIME:
+        return 0
+    if not text.endswith(('d', 'h', 'm')):
+        raise ValueError(INTERVAL_UNIT_ERROR)
+    try:
+        number = int(text[:-1].strip())
+    except ValueError:
+        raise ValueError('Invalid number before the unit.')
+    if number < 0:
+        raise ValueError('Repeat interval must not be negative.')
+    if number == 0:
+        return 0
+    return number * {'d': 1440, 'h': 60, 'm': 1}[text[-1]]
+
+
+def format_interval(minutes) -> str:
+    """The other way round: an interval of minutes as it is written in the
+    interface, in the same units it can be typed back in."""
+    value = int(minutes or 0)
+    if value <= 0:
+        return 'One time'
+    if value % 1440 == 0:
+        return f'{int(value / 1440)}d'
+    if value % 60 == 0:
+        return f'{int(value / 60)}h'
+    return f'{value}m'
 
 
 class Command(models.Model):
@@ -70,12 +113,7 @@ class CommandSchedule(models.Model):
 
     @property
     def repeat_interval_display(self):
-        val = self.repeat_interval
-        if val % 1440 == 0:
-            return f"{int(val / 1440)}d"
-        elif val % 60 == 0:
-            return f"{int(val / 60)}h"
-        return f"{val}m"
+        return format_interval(self.repeat_interval)
 
     @property
     def calculate_next_run(self):
@@ -145,6 +183,54 @@ class CommandSchedule(models.Model):
             self.enabled = False
             self.save(update_fields=["enabled"])
         return self.enabled
+
+
+class ScheduleDefaults(models.Model):
+    """What a new schedule starts out as.
+
+    A schedule needs a moment to begin at and an interval to repeat in, and both
+    are the same for most of them - the hour a maintenance window opens, the week
+    it comes back in. They are set once here instead of being typed again for
+    every command. Only a schedule that is created gets them: one that already
+    exists keeps its own values, whatever is set here afterwards.
+    """
+    name = models.CharField(max_length=16, default='schedule_defaults', unique=True)
+
+    # The time of day a new schedule starts at. The day is the next one this time
+    # comes around, so a new schedule starts at the next maintenance window
+    # instead of in the past.
+    start_time = models.TimeField(default=datetime.time(3, 0))
+
+    # In minutes, like CommandSchedule.repeat_interval: 0 is one single run
+    repeat_interval = models.IntegerField(default=10080)
+
+    updated = models.DateTimeField(auto_now=True)
+    created = models.DateTimeField(auto_now_add=True)
+    uuid = models.UUIDField(unique=True, editable=False, default=uuid.uuid4)
+
+    def __str__(self) -> str:
+        return self.name
+
+    @classmethod
+    def load(cls):
+        """The one row that holds them, created on the first look, like the other
+        settings of this project."""
+        defaults, _ = cls.objects.get_or_create(name='schedule_defaults')
+        return defaults
+
+    @property
+    def repeat_interval_display(self) -> str:
+        return format_interval(self.repeat_interval)
+
+    def next_start_at(self):
+        """The next time the default time of day comes around: the moment a new
+        schedule is set to begin at."""
+        now = timezone.localtime()
+        start = timezone.make_aware(datetime.datetime.combine(now.date(), self.start_time),
+                                    timezone.get_current_timezone())
+        if start <= now:
+            start += datetime.timedelta(days=1)
+        return start
 
 
 class CommandVariant(models.Model):
