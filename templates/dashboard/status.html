@@ -137,6 +137,42 @@
                         </div>
                     </div>
                 </div>
+                <!-- How far the devices are with their OS version. The same rule
+                     as the colours of the router list, so both agree -->
+                <div class="row mb-4">
+                    <div class="col-md-3">
+                        <div class="info-box bg-success"
+                             title="The devices that run the version they could update to">
+                            <span class="info-box-icon"><i class="fas fa-check-circle"></i></span>
+                            <div class="info-box-content">
+                                <span class="info-box-text">Routers Up To Date</span>
+                                <span class="info-box-number">{{ update_state.up_to_date }}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-3">
+                        <div class="info-box bg-danger"
+                             title="The devices whose OS version is behind the one they could update to">
+                            <span class="info-box-icon"><i class="fas fa-cloud-download-alt"></i></span>
+                            <div class="info-box-content">
+                                <span class="info-box-text">Routers Missing Updates</span>
+                                <span class="info-box-number">{{ update_state.update_waiting }}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-3">
+                        <div class="info-box bg-secondary"
+                             title="The devices RouterFleet has no version of, or no version to compare it with (an update check that failed, or a device type without one). Update the router information.">
+                            <span class="info-box-icon"><i class="fas fa-question-circle"></i></span>
+                            <div class="info-box-content">
+                                <span class="info-box-text">Routers Without Information</span>
+                                <span class="info-box-number">{{ update_state.no_information }}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
                 </div>
             </div> <!-- /.card-body -->
         </div> <!-- /.card -->

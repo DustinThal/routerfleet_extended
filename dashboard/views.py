@@ -7,6 +7,7 @@ from django.utils import timezone
 
 from backup_data.models import RouterBackup
 from router_manager.models import Router, RouterStatus
+from router_manager.templatetags.router_tags import update_state_counts
 
 ALLOWED_DAYS = [3,5,7,10, 15, 30]  # Define allowed values
 
@@ -83,6 +84,7 @@ def view_status(request):
         'router_online_count': RouterStatus.objects.filter(status_online=True, router__monitoring=True).count(),
         'router_offline_count': RouterStatus.objects.filter(status_online=False, router__monitoring=True).count(),
         'router_not_monitored_count': Router.objects.filter(enabled=True, monitoring=False).count(),
+        'update_state': update_state_counts(),
         'routerfleet_version': settings.ROUTERFLEET_VERSION,
     }
 

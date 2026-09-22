@@ -74,6 +74,10 @@ The same change fixes the run count: every execution used to increment the retry
 - **CSV export:** the button beside **Select All** writes the router list into a CSV file — the rows the current search shows (the search box, the column filters and the group are all respected), across all pages, in the order they are sorted in, and with the columns that are visible. The file carries a byte order mark, so Excel opens the umlauts and accents correctly, and its name carries the date.
 - **Select All** now selects what the search shows, not every router in the list. Rows that the search filtered out stay in the page (hidden), so they used to be selected as well.
 
+### Status page
+
+The status page shows how the fleet stands with its OS versions: how many devices are **up to date**, how many are **missing an update** and how many have **no information** at all — a device that was never read out, one whose update check failed, or a device type that has no update check (airOS). The three numbers are the colours of the router list counted up, so the overview and the list can not tell two different stories. A device that is only monitored has no version at all and stays out of all three.
+
 ### Passwords and secrets
 
 Passwords are no longer stored in cleartext:

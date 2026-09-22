@@ -2,6 +2,8 @@ import re
 
 from django import template
 
+from router_manager.models import Router, RouterInformation
+
 register = template.Library()
 
 # The number part of a version. '7.16.2 (stable)' of RouterOS, the kernel
@@ -90,3 +92,33 @@ def os_version_state(router_information):
                 'title': f'{available_version} is available, the router runs {os_version}'}
     # Ahead of what the channel offers, there is nothing to update
     return NEUTRAL_STATE
+
+
+def update_state_counts():
+    """How many devices are up to date, are missing an update and have no
+    information at all.
+
+    The very rule os_version_state colours the router list by, so the overview
+    and the list can not tell two different stories. Devices that are only
+    monitored stay out: they carry no version at all and the list shows none
+    for them either.
+    """
+    information_of_router = {
+        information.router_id: information
+        for information in RouterInformation.objects.exclude(router__router_type='monitoring')
+    }
+    counts = {'up_to_date': 0, 'update_waiting': 0, 'no_information': 0}
+
+    router_ids = Router.objects.exclude(router_type='monitoring').values_list('id', flat=True)
+    for router_id in router_ids:
+        state = os_version_state(information_of_router.get(router_id))
+        if state['css_class'] == 'text-success':
+            counts['up_to_date'] += 1
+        elif state['css_class'] == 'text-danger':
+            counts['update_waiting'] += 1
+        else:
+            # Nothing was read out of the device, or there is no version to
+            # compare the one it runs with
+            counts['no_information'] += 1
+
+    return counts
