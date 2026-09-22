@@ -1,0 +1,77 @@
+{% extends 'base.html' %}
+
+{% block content %}
+    <div class='row'>
+        <div class='col-lg-12'>
+            <div class="card card-primary card-outline">
+                {% if page_title %}
+                    <div class="card-header">
+                        <h3 class="card-title">{{ page_title }}</h3>
+                    </div>
+                {% endif %}
+                <div class="card-body">
+                    {% include 'audit_log/audit_log_nav_tabs.html' %}
+                    <div class="row">
+                        <div class="col-lg-12">
+                            <table class="table table-hover datatables-no-export">
+                                <thead>
+                                <tr>
+                                    <th><i class="fas fa-sign-in-alt" title="Result"></i></th>
+                                    <th>When</th>
+                                    <th>Account</th>
+                                    <th>Address</th>
+                                    <th>Device</th>
+                                    <th><i class="fas fa-link" title="Session"></i></th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                {% for record in login_list %}
+                                    <tr>
+                                        <td class="min-width">
+                                            {% if record.successful %}
+                                                <i class="fas fa-check-circle text-success" title="Signed in"></i>
+                                            {% else %}
+                                                <i class="fas fa-times-circle text-danger" title="Refused"></i>
+                                            {% endif %}
+                                        </td>
+                                        <td class="min-width">{{ record.created }}</td>
+                                        <td>
+                                            {{ record.username }}
+                                            {% if record.user_level is not None %}
+                                                <span class="text-muted">({{ record.user_level }})</span>
+                                            {% endif %}
+                                        </td>
+                                        <td class="min-width">
+                                            {% if record.ip %}
+                                                <u title="{{ record.address_title }}">{{ record.ip }}</u>
+                                            {% else %}
+                                                <span class="text-muted">&mdash;</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if record.user_agent %}
+                                                <u title="{{ record.user_agent }}">{{ record.user_agent|truncatechars:60 }}</u>
+                                            {% else %}
+                                                <span class="text-muted">&mdash;</span>
+                                            {% endif %}
+                                        </td>
+                                        <td class="min-width">
+                                            {% if not record.successful %}
+                                            {% elif record.session_key in open_sessions %}
+                                                <i class="fas fa-link text-success" title="This session is still open"></i>
+                                            {% else %}
+                                                <i class="fas fa-unlink text-muted" title="This session has ended"></i>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <p class="small" style="text-align: right; font-style: italic">The newest {{ row_limit }} sign-ins and attempts. Older ones stay in the database, and entries are not removed from here.</p>
+        </div>
+    </div>
+{% endblock %}

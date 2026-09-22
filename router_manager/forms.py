@@ -221,15 +221,32 @@ class RouterGroupForm(forms.ModelForm):
     def clean(self):
         cleaned_data = super().clean()
         name = cleaned_data.get('name')
-        default_group = cleaned_data.get('default_group')
 
         if name:
             name = name.strip()
             cleaned_data['name'] = name
 
-        if default_group:
-            RouterGroup.objects.filter(default_group=True).update(default_group=False)
         return cleaned_data
+
+    def save(self, commit=True):
+        group = super().save(commit=commit)
+
+        # Only one group can be the default, so the others give it up. This belongs
+        # in save() and not in clean(): clean() runs before the form has decided
+        # whether it accepts the input at all, so a duplicate name - which
+        # _post_clean rejects - would have taken the default away from another
+        # group without saving anything, and the change log would record a change
+        # that never happened.
+        #
+        # One save() per group, and not a queryset update(): update() sends no
+        # signal, so the log would show the new default being set and let the old
+        # one silently go false.
+        if commit and group.default_group:
+            for other in RouterGroup.objects.filter(default_group=True).exclude(pk=group.pk):
+                other.default_group = False
+                other.save()
+        return group
+
 
 class SSHKeyForm(forms.ModelForm):
     class Meta:

@@ -49,7 +49,10 @@ INSTALLED_APPS = [
     'routerfleet_tools',
     'message_center',
     'import_tool',
-    'fleet_commander'
+    'fleet_commander',
+    # Last, so that its ready() runs once every other app has its models, which
+    # is what the audit trail watches
+    'audit_log',
 ]
 
 MIDDLEWARE = [
@@ -58,6 +61,8 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    # After the user is known, so a change can be recorded with who made it
+    'audit_log.middleware.AuditContextMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]

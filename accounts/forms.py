@@ -28,12 +28,18 @@ class LoginForm(forms.Form):
     username = forms.CharField(label='Username')
     password = forms.CharField(label='Password', widget=forms.PasswordInput)
 
+    def __init__(self, *args, request=None, **kwargs):
+        # Handed over to authenticate(), which is what lets a refused attempt be
+        # recorded with the address it came from
+        super().__init__(*args, **kwargs)
+        self.request = request
+
     def clean(self):
         cleaned_data = super().clean()
         username = cleaned_data.get("username")
         password = cleaned_data.get("password")
         if username and password:
-            user = authenticate(username=username, password=password)
+            user = authenticate(self.request, username=username, password=password)
             if not user:
                 self.add_error(None, ValidationError("Invalid username or password."))
         else:

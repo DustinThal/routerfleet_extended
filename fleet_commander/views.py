@@ -7,6 +7,7 @@ from django.http import JsonResponse
 from django.shortcuts import render, redirect, get_object_or_404
 from django.utils import timezone
 
+from audit_log.bulk import suspend
 from router_manager.models import Router
 from user_manager.models import UserAcl
 from .command_functions import build_verification_expectations, create_jobs_from_schedules, \
@@ -81,7 +82,10 @@ def view_command_list(request):
         return render(request, 'access_denied.html', {'page_title': 'Access Denied'})
     command_list = Command.objects.all().order_by('name')
     if not command_list:
-        create_default_commands()
+        # Seeded while a page is being rendered, so nothing is recorded: the
+        # application made these for itself, nobody did
+        with suspend():
+            create_default_commands()
         messages.success(request, 'Default commands created successfully')
         command_list = Command.objects.all().order_by('name')
 

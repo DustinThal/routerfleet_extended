@@ -5,6 +5,7 @@ from django.db.models import Q
 from django.http import JsonResponse
 from django.utils import timezone
 
+from audit_log.bulk import collect
 from backup.models import BackupProfile
 from backup_data.models import RouterBackup
 from message_center.functions import notify_backup_fail, notify_backup_task_lock_expired
@@ -288,22 +289,35 @@ def view_cron_housekeeping(request):
         router_status.save()
         data['command_locks_removed'] += 1
 
-    for backup_profile in BackupProfile.objects.all():
-        if backup_profile.name == 'default':
-            backup_list = RouterBackup.objects.filter(Q(router__backup_profile=backup_profile) | Q(router__backup_profile__isnull=True))
-        else:
-            backup_list = RouterBackup.objects.filter(router__backup_profile=backup_profile)
+    # The whole sweep is one entry in the change log, with what it removed. Nothing
+    # is removed by a person here, and a pass that finds nothing leaves no entry at
+    # all, so a housekeeping run every ten minutes stays quiet
+    with collect('Retention') as retention:
+        for backup_profile in BackupProfile.objects.all():
+            if backup_profile.name == 'default':
+                backup_list = RouterBackup.objects.filter(Q(router__backup_profile=backup_profile) | Q(router__backup_profile__isnull=True))
+            else:
+                backup_list = RouterBackup.objects.filter(router__backup_profile=backup_profile)
 
-        if backup_profile.retain_backups_on_error:
-            backup_list = backup_list.filter(router__routerstatus__last_backup_failed__isnull=True)
+            if backup_profile.retain_backups_on_error:
+                backup_list = backup_list.filter(router__routerstatus__last_backup_failed__isnull=True)
 
-        backup_list.filter(schedule_type='instant', created__lt=timezone.now() - timedelta(days=backup_profile.instant_retention)).delete()
-        backup_list.filter(schedule_type='monthly', created__lt=timezone.now() - timedelta(days=backup_profile.monthly_retention)).delete()
-        backup_list.filter(schedule_type='weekly', created__lt=timezone.now() - timedelta(days=backup_profile.weekly_retention)).delete()
-        backup_list.filter(schedule_type='daily', created__lt=timezone.now() - timedelta(days=backup_profile.daily_retention)).delete()
+            for schedule_type, retention_days in (
+                    ('instant', backup_profile.instant_retention),
+                    ('monthly', backup_profile.monthly_retention),
+                    ('weekly', backup_profile.weekly_retention),
+                    ('daily', backup_profile.daily_retention)):
+                # delete() says how many rows it removed, so the summary costs no
+                # query of its own
+                retention.removed(backup_list.filter(
+                    schedule_type=schedule_type,
+                    created__lt=timezone.now() - timedelta(days=retention_days)).delete())
 
-    expired_messages = Message.objects.filter(created__lt=timezone.now() - timedelta(days=30))
-    data['messages_removed'] = expired_messages.count()
-    expired_messages.delete()
+        expired_messages = Message.objects.filter(created__lt=timezone.now() - timedelta(days=30))
+        removed = expired_messages.delete()
+        retention.removed(removed)
+        # What a cascade took with it was not a message, so the report counts the
+        # messages themselves
+        data['messages_removed'] = removed[1].get(Message._meta.label, 0)
 
     return JsonResponse(data)

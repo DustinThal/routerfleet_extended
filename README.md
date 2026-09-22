@@ -128,6 +128,33 @@ The encryption key is generated automatically the first time the container start
 
 A router group used in the CSV that did not exist aborted the whole import with `Router Group 'x' does not exist`. The import form now collects *every* missing group and asks about all of them at once: without the new **Create missing Router Groups automatically** checkbox the error lists each unknown group, with the box ticked the groups are created while the CSV is saved. They are created with `get_or_create`, so re-importing a CSV cannot create duplicates.
 
+### Audit log
+
+A new sidebar entry **Audit Log** holds two read-only histories, one tab each. Both are visible from permission level 50, the same level as the User Manager.
+
+**Login History** records every attempt to sign in — successful or not — with the account, the moment, the address it came from and the browser or client it came from. A row whose session is still open is marked as such and is closed when the account signs out. A refused attempt is recorded with the name that was typed, including a name that belongs to nobody, which is how a run of attempts is noticed.
+
+The address is read from `X-Real-IP` first, which the nginx of this project sets to the address of the connection itself. Without it the last entry of `X-Forwarded-For` is used — that is the one the proxy in front appended, and the only entry a client cannot have written — and the whole chain is stored beside the address, so what a client claimed can be read rather than believed. Hovering over the address shows it.
+
+**A browser never sends the hostname of the device it runs on.** Nothing in HTTP, TLS or TCP carries it and JavaScript cannot read it, so the log records the address and the `User-Agent` line (operating system and browser, not a name). There is no reverse-DNS lookup: a PTR record says what DNS claims about an address, is often empty on a local network, and can hang.
+
+**Change Log** records what was changed in the configuration and by whom: routers, router groups, SSH keys, backup profiles, Fleet Commander commands, variants, schedules and schedule defaults, message channels and settings, external integrations, and accounts together with their permission level. Each entry opens field by field — before and after — in the same popup the backup change uses, without leaving the page. A save that changed nothing writes nothing, so a job writing its own progress does not fill the log.
+
+Work that is not a person's is not recorded row by row:
+
+- A bulk operation — a retention sweep, a bulk edit, adding many devices to a group — is **one entry** that names what it was about and how many rows it touched.
+- Things the application makes for itself, such as the default commands seeded when the Fleet Commander is first opened, are not recorded at all.
+
+Passwords, private keys and tokens are compared on their real value and written as `(set)` or `(empty)`: the log proves that a secret changed without holding a second copy of it. Changes made from a management command appear as `command line` and changes made by the cron container as `cron`.
+
+**Entries cannot be removed from the interface** — there is no button, the Django admin is registered read-only, and deleting a row in any other way is refused with an error naming the command below. That is deliberate: an audit trail the person being audited can clear is not one. Old entries are kept until you remove them yourself:
+
+```
+python manage.py prune_audit_log --older-than 365 [--dry-run] [--login-history | --change-log]
+```
+
+`--older-than` is a number of days and is required, so it cannot wipe the history by accident. Without a flag both logs are pruned.
+
 ### Deployment
 
 Docker images are built and published to `ghcr.io/dustinthal` by a GitHub Actions workflow on every push to `main`, and the compose files in this repository already use them. `docker compose pull` therefore picks up this fork's images, not upstream's.

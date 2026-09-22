@@ -10,6 +10,7 @@ from django.http import JsonResponse
 from django.shortcuts import render, redirect, get_object_or_404
 from django.utils import timezone
 
+from audit_log.bulk import collect
 from backup.models import BackupProfile
 from backup_data.models import RouterBackup
 from routerfleet_tools.models import WebadminSettings
@@ -393,32 +394,36 @@ def view_edit_routers_multiple(request):
                 backup_profile = get_object_or_404(BackupProfile, uuid=backup_profile_uuid)
 
             updated_count = 0
-            for router in routers:
-                if form.cleaned_data.get('port'):
-                    router.port = form.cleaned_data['port']
-                if form.cleaned_data.get('username'):
-                    router.username = form.cleaned_data['username']
-                if form.cleaned_data.get('monitoring'):
-                    router.monitoring = form.cleaned_data['monitoring'] == 'true'
-                if form.cleaned_data.get('enabled'):
-                    router.enabled = form.cleaned_data['enabled'] == 'true'
-                if backup_profile_uuid:
-                    router.backup_profile = backup_profile
-                if form.cleaned_data.get('internal_notes'):
-                    router.internal_notes = form.cleaned_data['internal_notes']
-                if router.router_type != 'monitoring':
-                    if form.cleaned_data.get('password'):
-                        router.password = form.cleaned_data['password']
-                        router.ssh_key = None
-                    if ssh_key_uuid:
-                        if ssh_key_uuid == 'clear':
+            # One entry for the whole edit instead of one per router: the form says
+            # what to set, and the number of devices it reached is the interesting
+            # part of it
+            with collect('Bulk edit of routers'):
+                for router in routers:
+                    if form.cleaned_data.get('port'):
+                        router.port = form.cleaned_data['port']
+                    if form.cleaned_data.get('username'):
+                        router.username = form.cleaned_data['username']
+                    if form.cleaned_data.get('monitoring'):
+                        router.monitoring = form.cleaned_data['monitoring'] == 'true'
+                    if form.cleaned_data.get('enabled'):
+                        router.enabled = form.cleaned_data['enabled'] == 'true'
+                    if backup_profile_uuid:
+                        router.backup_profile = backup_profile
+                    if form.cleaned_data.get('internal_notes'):
+                        router.internal_notes = form.cleaned_data['internal_notes']
+                    if router.router_type != 'monitoring':
+                        if form.cleaned_data.get('password'):
+                            router.password = form.cleaned_data['password']
                             router.ssh_key = None
-                        else:
-                            router.ssh_key = ssh_key
-                        if not form.cleaned_data.get('password'):
-                            router.password = ''
-                router.save()
-                updated_count += 1
+                        if ssh_key_uuid:
+                            if ssh_key_uuid == 'clear':
+                                router.ssh_key = None
+                            else:
+                                router.ssh_key = ssh_key
+                            if not form.cleaned_data.get('password'):
+                                router.password = ''
+                    router.save()
+                    updated_count += 1
 
             request.session.pop('router_selection', None)
             webadmin_settings, webadmin_settings_created = WebadminSettings.objects.get_or_create(name='webadmin_settings')
@@ -480,8 +485,11 @@ def view_manage_router_groups_multiple(request):
         if add_group_uuid:
             try:
                 group = RouterGroup.objects.get(uuid=add_group_uuid)
-                for router in routers:
-                    group.routers.add(router)
+                # One entry naming the group and the number of routers, rather than
+                # one membership line each
+                with collect(f'Added routers to group {group.name}'):
+                    for router in routers:
+                        group.routers.add(router)
                 messages.success(request, f'Added {routers.count()} router(s) to group {group.name}')
             except RouterGroup.DoesNotExist:
                 messages.error(request, 'Group not found')
@@ -490,8 +498,9 @@ def view_manage_router_groups_multiple(request):
         if remove_group_uuid:
             try:
                 group = RouterGroup.objects.get(uuid=remove_group_uuid)
-                for router in routers:
-                    group.routers.remove(router)
+                with collect(f'Removed routers from group {group.name}'):
+                    for router in routers:
+                        group.routers.remove(router)
                 messages.success(request, f'Removed {routers.count()} router(s) from group {group.name}')
             except RouterGroup.DoesNotExist:
                 messages.error(request, 'Group not found')

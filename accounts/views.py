@@ -26,14 +26,14 @@ def view_login(request):
     if not User.objects.filter().all():
         return redirect('/accounts/create_first_user/')
     if request.method == 'POST':
-        form = LoginForm(request.POST)
+        form = LoginForm(request.POST, request=request)
         if form.is_valid():
             username = form.cleaned_data['username']
             user = User.objects.get(username=username)
             auth.login(request, user)
             return redirect('/')
     else:
-        form = LoginForm()
+        form = LoginForm(request=request)
     return render(request, 'accounts/login.html', {'form': form})
 
 

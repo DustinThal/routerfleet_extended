@@ -2,6 +2,7 @@ from django.contrib import admin
 from django.urls import path
 
 from accounts.views import view_login, view_logout, view_create_first_user
+from audit_log.views import view_login_history, view_change_log, view_change_detail
 from backup.views import view_backup_profile_list, view_manage_backup_profile, view_backup_list, view_backup_details, \
     view_debug_run_backups, view_compare_backups, view_backup_download, view_backup_delete, \
     view_backup_config_change
@@ -82,6 +83,9 @@ urlpatterns = [
     path('wireguard_webadmin/', view_wireguard_webadmin_launcher, name='wireguard_webadmin_launcher'),
     path('wireguard_webadmin/manage/', view_manage_wireguard_integration, name='manage_wireguard_integration'),
     path('wireguard_webadmin/launch/', view_launch_wireguard_webadmin, name='launch_wireguard_webadmin'),
+    path('audit_log/login_history/', view_login_history, name='audit_log_login_history'),
+    path('audit_log/change_log/', view_change_log, name='audit_log_change_log'),
+    path('audit_log/change_detail/', view_change_detail, name='audit_log_change_detail'),
     path('message_center/channel_list/', view_message_channel_list, name='message_channel_list'),
     path('message_center/manage_settings/', view_manage_message_settings, name='manage_message_settings'),
     path('message_center/manage_channel/', view_manage_message_channel, name='manage_message_channel'),

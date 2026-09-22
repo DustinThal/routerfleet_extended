@@ -1,0 +1,81 @@
+{% extends 'base.html' %}
+
+{% block content %}
+    <div class='row'>
+        <div class='col-lg-12'>
+            <div class="card card-primary card-outline">
+                {% if page_title %}
+                    <div class="card-header">
+                        <h3 class="card-title">{{ page_title }}</h3>
+                    </div>
+                {% endif %}
+                <div class="card-body">
+                    {% include 'audit_log/audit_log_nav_tabs.html' %}
+                    <div class="row">
+                        <div class="col-lg-12">
+                            <table class="table table-hover datatables-no-export">
+                                <thead>
+                                <tr>
+                                    <th><i class="fas fa-pen" title="What was done"></i></th>
+                                    <th>When</th>
+                                    <th>What</th>
+                                    <th>Object</th>
+                                    <th>By</th>
+                                    <th>From</th>
+                                    <th></th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                {% for record in change_list %}
+                                    <tr>
+                                        <td class="min-width">
+                                            {% if record.action == 'created' %}
+                                                <i class="fas fa-plus-circle text-success" title="Created"></i>
+                                            {% elif record.action == 'deleted' %}
+                                                <i class="fas fa-minus-circle text-danger" title="Deleted"></i>
+                                            {% elif record.action == 'bulk' %}
+                                                <i class="fas fa-layer-group text-info" title="Several rows at once"></i>
+                                            {% else %}
+                                                <i class="fas fa-edit text-warning" title="Changed"></i>
+                                            {% endif %}
+                                        </td>
+                                        <td class="min-width">{{ record.created }}</td>
+                                        <td class="min-width">{{ record.get_action_display }}</td>
+                                        <td>
+                                            {% if record.model_name %}<span class="text-muted">{{ record.model_name }}</span>{% endif %}
+                                            {% if record.display_object %}
+                                                <u title="{{ record.display_object }}">{{ record.display_object|truncatechars:60 }}</u>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if record.actor_name %}
+                                                {{ record.actor_name }}
+                                                {% if record.actor_level is not None %}
+                                                    <span class="text-muted">({{ record.actor_level }})</span>
+                                                {% endif %}
+                                            {% else %}
+                                                <span class="text-muted">{{ record.actor_kind }}</span>
+                                            {% endif %}
+                                        </td>
+                                        <td class="min-width">
+                                            {% if record.ip %}
+                                                <u title="{{ record.address_title }}">{{ record.ip }}</u>
+                                            {% else %}
+                                                <span class="text-muted">&mdash;</span>
+                                            {% endif %}
+                                        </td>
+                                        <td class="min-width">
+                                            <a href="#" class="audit-change-link" data-uuid="{{ record.uuid }}">{{ record.field_summary|default:"Details"|truncatechars:40 }}</a>
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <p class="small" style="text-align: right; font-style: italic">The newest {{ row_limit }} changes. Older ones stay in the database, and entries are not removed from here.</p>
+        </div>
+    </div>
+{% endblock %}
