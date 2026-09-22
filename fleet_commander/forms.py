@@ -226,7 +226,8 @@ class CommandScheduleForm(forms.ModelForm):
 
     class Meta:
         model = CommandSchedule
-        fields = ['enabled', 'router', 'router_group', 'start_at', 'end_at']
+        fields = ['enabled', 'router', 'router_group', 'exclude_router',
+                  'exclude_router_group', 'start_at', 'end_at']
         widgets = {
             'start_at': forms.DateTimeInput(attrs={'type': 'datetime-local'}),
             'end_at': forms.DateTimeInput(attrs={'type': 'datetime-local'}),
@@ -256,6 +257,11 @@ class CommandScheduleForm(forms.ModelForm):
             Div(
                 Div(Field('router'), css_class='col-xl-6'),
                 Div(Field('router_group'), css_class='col-xl-6'),
+                css_class='row',
+            ),
+            Div(
+                Div(Field('exclude_router'), css_class='col-xl-6'),
+                Div(Field('exclude_router_group'), css_class='col-xl-6'),
                 css_class='row',
             ),
             Div(
@@ -304,10 +310,22 @@ class CommandScheduleForm(forms.ModelForm):
 
     def clean(self):
         cleaned_data = super().clean()
-        router = cleaned_data.get('router')
-        router_group = cleaned_data.get('router_group')
-        if not router and not router_group:
+        routers = set(cleaned_data.get('router') or [])
+        router_group = cleaned_data.get('router_group') or []
+        if not routers and not router_group:
             raise forms.ValidationError("You must select at least one router or one router group.")
+
+        # An exclusion wins over everything, so a schedule whose every device is
+        # excluded would never run anything - that is worth saying before it is
+        # saved instead of leaving a schedule behind that silently does nothing
+        for group in router_group:
+            routers.update(group.routers.all())
+        excluded = set(cleaned_data.get('exclude_router') or [])
+        for group in cleaned_data.get('exclude_router_group') or []:
+            excluded.update(group.routers.all())
+        if not routers - excluded:
+            raise forms.ValidationError(
+                "Every device of this schedule is excluded from it, so it would never run anything.")
         return cleaned_data
 
     def save(self, commit=True):

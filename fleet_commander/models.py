@@ -43,6 +43,18 @@ class CommandSchedule(models.Model):
     command = models.ForeignKey(Command, on_delete=models.PROTECT, related_name="schedules")
     router = models.ManyToManyField(Router, blank=True, related_name="command_schedules")
     router_group = models.ManyToManyField(RouterGroup, blank=True, related_name="command_schedules")
+
+    # Devices and groups that are taken out of this schedule again. An exclusion
+    # always wins: a device that a selected group brings in and that stands in an
+    # excluded group, or was excluded itself, is not executed.
+    exclude_router = models.ManyToManyField(
+        Router, blank=True, related_name="excluded_command_schedules",
+        verbose_name="Excluded routers",
+        help_text="These devices are left out, also when a selected group brings them in.")
+    exclude_router_group = models.ManyToManyField(
+        RouterGroup, blank=True, related_name="excluded_command_schedules",
+        verbose_name="Excluded router groups",
+        help_text="Every device of these groups is left out, also when another selected group brings it in.")
     enabled = models.BooleanField(default=True)
 
     start_at = models.DateTimeField(blank=True, null=True)
@@ -90,12 +102,45 @@ class CommandSchedule(models.Model):
         self.save(update_fields=["next_run"])
         return self.next_run
 
+    def selected_routers(self) -> set:
+        """The devices the selection brings in, the exclusions not subtracted."""
+        routers = set(self.router.filter(enabled=True))
+        for group in self.router_group.all():
+            routers.update(group.routers.filter(enabled=True))
+        return routers
+
+    def target_routers(self) -> set:
+        """The devices this schedule runs on.
+
+        The exclusions are subtracted at the end, so an exclusion wins over
+        everything: a device that a selected group brings in and that stands in
+        an excluded group, or was excluded itself, is not run.
+        """
+        routers = self.selected_routers()
+
+        excluded = set(self.exclude_router.all())
+        for group in self.exclude_router_group.all():
+            excluded.update(group.routers.all())
+
+        return routers - excluded
+
+    @property
+    def target_summary(self):
+        """What this schedule runs on, for the list of schedules."""
+        selected = self.selected_routers()
+        targets = self.target_routers()
+        if not selected:
+            return 'No device selected'
+
+        text = f'{len(targets)} ' + ('device' if len(targets) == 1 else 'devices')
+        excluded = len(selected) - len(targets)
+        if excluded:
+            text += f', {excluded} excluded'
+        return text
+
     def disable_if_invalid(self) -> bool:
         has_active_variant = self.command.variants.filter(enabled=True).exists()
-        has_active_router = (
-                self.router.filter(enabled=True).exists()
-                or self.router_group.filter(routers__enabled=True).exists()
-        )
+        has_active_router = bool(self.target_routers())
         if not has_active_variant or not has_active_router or not self.command.enabled:
             self.enabled = False
             self.save(update_fields=["enabled"])

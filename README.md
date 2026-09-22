@@ -78,6 +78,12 @@ The same change fixes the run count: every execution used to increment the retry
 
 The status page shows how the fleet stands with its OS versions: how many devices are **up to date**, how many are **missing an update** and how many have **no information** at all — a device that was never read out, one whose update check failed, or a device type that has no update check (airOS). The three numbers are the colours of the router list counted up, so the overview and the list can not tell two different stories. A device that is only monitored has no version at all and stays out of all three.
 
+### Schedules that leave a device out
+
+A command schedule can **exclude** devices and groups. An exclusion always wins, however a device came into the schedule: a device that is selected on its own, or that belongs to a selected group, is still not executed when it stands in an excluded group or was excluded itself. That is how a device that is in both a *Location* group that should run and a *Type* group that should not is left out — exclude the *Type* group and the device is no longer run, without taking it out of any group.
+
+A single device is excluded the same way, without touching its groups. The list of schedules says what each one runs on (`3 devices, 1 excluded`), and a schedule whose every device is excluded is refused when it is saved instead of being left behind doing nothing. Remove an exclusion and the devices are picked up again on the next run.
+
 ### Passwords and secrets
 
 Passwords are no longer stored in cleartext:

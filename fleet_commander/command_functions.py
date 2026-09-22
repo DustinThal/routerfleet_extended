@@ -397,9 +397,7 @@ def create_jobs_from_schedules():
         if not schedule.enabled:
             continue
 
-        routers = set(schedule.router.filter(enabled=True))
-        for group in schedule.router_group.all():
-            routers.update(group.routers.filter(enabled=True))
+        routers = schedule.target_routers()
 
         if not routers:
             schedule.last_run = now

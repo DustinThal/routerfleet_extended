@@ -95,6 +95,7 @@
                                     <tr>
                                         <th>Enabled</th>
                                         <th>Repeat Interval</th>
+                                        <th>Targets</th>
                                         <th>Next Run</th>
                                         <th></th>
                                     </tr>
@@ -112,6 +113,7 @@
                                             <td>
                                                 {{ schedule.repeat_interval_display }}
                                             </td>
+                                            <td class="text-muted">{{ schedule.target_summary }}</td>
                                             <td>{{ schedule.next_run|default_if_none:"—" }}</td>
                                             <td class="min-width">
                                                 <a
@@ -122,7 +124,7 @@
                                         </tr>
                                     {% empty %}
                                         <tr>
-                                            <td colspan="4" class="text-muted">No schedules defined.</td>
+                                            <td colspan="5" class="text-muted">No schedules defined.</td>
                                         </tr>
                                     {% endfor %}
                                     </tbody>

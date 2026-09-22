@@ -378,6 +378,15 @@ def view_manage_command_schedule(request):
     
     <strong>Target</strong>
     <p>You must select at least one router or one router group to execute the scheduled command.</p>
+
+    <strong>Excluded Routers and Excluded Router Groups</strong>
+    <p>Devices that are taken out of this schedule again. An exclusion always wins, no matter how a
+    device came into the schedule: a device that is selected on its own, or belongs to a selected
+    group, is still not executed when it stands in an excluded group or was excluded itself. A
+    device that is in both a <em>Location</em> group that should run and a <em>Type</em> group that
+    should not is therefore left out - exclude the <em>Type</em> group.</p>
+    <p>One device can be excluded on its own the same way, without taking its groups apart. Excluded
+    devices stay in the schedule and are picked up again as soon as the exclusion is removed.</p>
     '''
 
     context = {
