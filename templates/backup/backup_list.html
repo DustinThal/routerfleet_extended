@@ -23,6 +23,7 @@
                                     <th>Schedule Type</th>
                                     <th>Task Created</th>
                                     <th>Finish Time</th>
+                                    <th class="min-width" title="Whether this backup brought a different configuration than the one before it">Config Change</th>
                                     <th class="min-width" title="Backup hash"><i class="fas fa-code-branch" title="Configuration has changed"></i></th>
                                     <th class="min-width">Status</th>
                                 </tr>
@@ -45,6 +46,17 @@
                                     <td>{{ backup.created|default_if_none:"" }}</td>
                                     <td>{% if backup.finish_time %}{{ backup.finish_time }}{% else %}
                                         <i class="far fa-clock text-warning"></i>{% endif %}</td>
+
+                                    <td class="min-width">
+                                        {% if backup.config_change_detected %}
+                                            <a href="#" class="config-change-link" data-uuid="{{ backup.uuid }}"
+                                               title="Show what this backup changed">
+                                                <i class="fas fa-code-branch"></i> Changed
+                                            </a>
+                                        {% else %}
+                                            ---
+                                        {% endif %}
+                                    </td>
 
                                     <td class="min-width">
                                         {% if backup.backup_text_hash %}

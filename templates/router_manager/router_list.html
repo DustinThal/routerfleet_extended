@@ -93,6 +93,9 @@
                                     {% if "last_backup" in visible_columns %}
                                     <th data-column="last_backup">Last Backup</th>
                                     {% endif %}
+                                    {% if "last_config_change" in visible_columns %}
+                                    <th data-column="last_config_change">Last Config Change</th>
+                                    {% endif %}
                                     {% if "next_daily_backup" in visible_columns %}
                                     <th data-column="next_daily_backup">Next Daily Backup</th>
                                     {% endif %}
@@ -203,6 +206,19 @@
                                         <td data-column="last_backup">
                                             {% if router.router_type != 'monitoring' and router.routerstatus.last_backup %}
                                                 {{ router.routerstatus.last_backup|date:"Y-m-d H:i:s" }}
+                                            {% else %}
+                                                ---
+                                            {% endif %}
+                                        </td>
+                                        {% endif %}
+                                        {% if "last_config_change" in visible_columns %}
+                                        <td data-column="last_config_change">
+                                            {% if router.last_config_change_uuid %}
+                                                <a href="#" class="config-change-link"
+                                                   data-uuid="{{ router.last_config_change_uuid }}"
+                                                   title="Show what changed in this backup">
+                                                    {{ router.last_config_change_time|date:"Y-m-d H:i:s" }}
+                                                </a>
                                             {% else %}
                                                 ---
                                             {% endif %}
@@ -372,6 +388,7 @@
             { name: "status", label: "Status", default: true },
             { name: "backup", label: "Backup", default: true },
             { name: "last_backup", label: "Last Backup", default: false },
+            { name: "last_config_change", label: "Last Config Change", default: false },
             { name: "next_daily_backup", label: "Next Daily Backup", default: false },
             { name: "next_weekly_backup", label: "Next Weekly Backup", default: false },
             { name: "next_monthly_backup", label: "Next Monthly Backup", default: false },

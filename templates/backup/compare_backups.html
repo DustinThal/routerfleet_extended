@@ -50,8 +50,11 @@
 {% endblock %}
 
 {% block custom_page_scripts %}
+    {{ diff_str|json_script:"diff-data" }}
     <script type="text/javascript">
-        var diffString = `{{ diff_str|safe }}`;
+        // Read as data, not written into the script: a configuration line can hold
+        // anything, a backtick or a closing script tag included
+        var diffString = JSON.parse(document.getElementById('diff-data').textContent);
         function renderDiff(viewType) {
             var targetElement = document.getElementById('diff-container');
             var processedDiffString = diffString.split('\n').filter(line => {

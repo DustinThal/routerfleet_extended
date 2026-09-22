@@ -415,6 +415,98 @@
 
 {% include "template_messages.html" %}
 
+<style>
+    /* The popup of a configuration change shows the lines of the diff, not the
+       name of the file, and a configuration line can be wider than the popup */
+    #genericModalBody .d2h-file-header,
+    #genericModalBody .d2h-file-list-wrapper {
+        display: none;
+    }
+
+    #genericModalBody {
+        overflow-x: auto;
+    }
+</style>
+
+<script>
+    // What a configuration change was, in the generic popup. Everything that
+    // shows such a change links to it with class="config-change-link" and the
+    // uuid of the backup in data-uuid, so no page leaves the page.
+    var diff2HtmlState = 'not loaded';
+    var pendingDiff = null;
+
+    function withDiff2Html(callback) {
+        // diff2html is only needed when somebody asks what changed, so it is
+        // fetched on the first click instead of on every page
+        if (diff2HtmlState === 'loaded') {
+            callback();
+            return;
+        }
+        pendingDiff = callback;
+        if (diff2HtmlState === 'loading') {
+            return;
+        }
+        diff2HtmlState = 'loading';
+        $('<link rel="stylesheet" type="text/css" href="/static/plugins/diff2html/diff2html.min.css"/>')
+            .appendTo(document.head);
+        $('<script type="text/javascript" src="/static/plugins/diff2html/diff2html.min.js"></script>')
+            .on('load', function () {
+                diff2HtmlState = 'loaded';
+                if (pendingDiff) {
+                    pendingDiff();
+                }
+            })
+            .appendTo(document.head);
+    }
+
+    function showConfigChange(uuid) {
+        $('#genericModalLabel').text('Configuration change');
+        $('#genericModalBody').html('<p class="text-muted">Loading…</p>');
+        $('#genericModalCloseButton').text('Close');
+        $('#genericModalActionButton').hide();
+        $('#genericModal').modal('show');
+
+        $.ajax({
+            url: '/backup/config_change/?uuid=' + encodeURIComponent(uuid),
+            type: 'GET',
+            success: function (response) {
+                $('#genericModalLabel').text('Configuration change of ' + response.router);
+                $('#genericModalActionButton')
+                    .text('Open the full comparison')
+                    .attr('href', response.compare_url)
+                    // The update popup opens its link in a new tab, this one belongs here
+                    .attr('target', '_self')
+                    .show();
+                withDiff2Html(function () {
+                    var header = $('<p class="text-muted"></p>').text(
+                        'Backup ' + response.previous.id + ' of ' + response.previous.date
+                        + ' → backup ' + response.backup.id + ' of ' + response.backup.date);
+                    var diffHtml = Diff2Html.html(response.diff, {
+                        inputFormat: 'diff', showFiles: false, matching: 'lines',
+                        outputFormat: 'side-by-side',
+                    });
+                    $('#genericModalBody').empty().append(header).append(diffHtml);
+                });
+            },
+            error: function (xhr) {
+                var message = 'The change could not be loaded.';
+                if (xhr.responseJSON && xhr.responseJSON.error) {
+                    message = xhr.responseJSON.error;
+                }
+                $('#genericModalLabel').text('Configuration change');
+                $('#genericModalBody').empty().append(
+                    $('<p class="text-muted"></p>').text(message));
+            }
+        });
+    }
+
+    $(document).on('click', '.config-change-link', function (event) {
+        event.preventDefault();
+        showConfigChange($(this).attr('data-uuid'));
+    });
+    // End of the configuration change popup
+</script>
+
 {% block custom_page_scripts %}
 
 {% endblock %}

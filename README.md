@@ -84,6 +84,14 @@ A command schedule can **exclude** devices and groups. An exclusion always wins,
 
 A single device is excluded the same way, without touching its groups. The list of schedules says what each one runs on (`3 devices, 1 excluded`), and a schedule whose every device is excluded is refused when it is saved instead of being left behind doing nothing. Remove an exclusion and the devices are picked up again on the next run.
 
+### What a backup changed
+
+Every backup now records whether it brought a different configuration than the backup before it — the field the little branch icon in the backup list has been promising without anything ever filling it. A backup that failed to read a configuration is looked past, so the comparison always reaches the last configuration that was really seen, and the very first backup of a device is no change: it is the one the later backups are measured against, not a change of anything.
+
+The **Router Manager** list has a **Last Config Change** column (`Show/Hide Columns`, it is off by default) with the moment the configuration of that device last changed, and `---` for a device whose configuration never did. The **backup overview** marks the backups that changed something.
+
+Clicking either one opens the change **on the page you are on** — no page navigation — as a line by line diff against the backup before it, next to a button that opens the full comparison for a change longer than the three lines of context around it. Backups you already have are filled in when you upgrade: a migration walks the history of every device and applies the same rule.
+
 ### Passwords and secrets
 
 Passwords are no longer stored in cleartext:

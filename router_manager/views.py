@@ -4,7 +4,8 @@ from urllib.parse import unquote
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.db.models import Sum
+from django.db.models import OuterRef, Subquery, Sum
+from django.db.models.functions import Coalesce
 from django.http import JsonResponse
 from django.shortcuts import render, redirect, get_object_or_404
 from django.utils import timezone
@@ -29,6 +30,19 @@ def view_router_list(request):
         'backupschedule', 
         'routergroup_set'
     ).order_by('name')
+
+    # The newest backup that brought a change, for the "Last Configuration
+    # Change" column. Annotated instead of asked per router, so the list stays one
+    # query however many devices it shows. The time is when the configuration was
+    # read from the device, which is what finish_time holds wherever it is known.
+    change_backups = RouterBackup.objects.filter(
+        router=OuterRef('pk'), config_change_detected=True).order_by('-created', '-id')
+    router_list = router_list.annotate(
+        last_config_change_time=Subquery(
+            change_backups.annotate(change_time=Coalesce('finish_time', 'created'))
+            .values('change_time')[:1]),
+        last_config_change_uuid=Subquery(change_backups.values('uuid')[:1]),
+    )
 
     last_router_status_change = RouterStatus.objects.filter(last_status_change__isnull=False).order_by('-last_status_change').first()
     if last_router_status_change:

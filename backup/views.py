@@ -148,8 +148,10 @@ def view_compare_backups(request):
         show_lines = 3
         show_all = False
 
-    diff = difflib.unified_diff(normalize_text(backup1.backup_text).splitlines(keepends=True),
-                                normalize_text(backup2.backup_text).splitlines(keepends=True),
+    # A backup that brought no configuration compares as an empty one, so a
+    # pending or failed backup does not end the page in an error
+    diff = difflib.unified_diff(normalize_text(backup1.backup_text or '').splitlines(),
+                                normalize_text(backup2.backup_text or '').splitlines(),
                                 fromfile=backup1.backup_text_hash[:16] + '...',
                                 tofile=backup2.backup_text_hash[:16] + '...',
                                 lineterm='', n=show_lines)
@@ -164,6 +166,63 @@ def view_compare_backups(request):
     }
 
     return render(request, 'backup/compare_backups.html', context)
+
+
+def backup_moment(backup) -> str:
+    """When the configuration of a backup was read from the device. A backup that
+    was retrieved from the router afterwards has a finish_time, one that failed
+    early has only the time it was created.
+    """
+    moment = backup.finish_time or backup.created
+    if moment is None:
+        return ''
+    if timezone.is_aware(moment):
+        moment = timezone.localtime(moment)
+    return moment.strftime('%Y-%m-%d %H:%M')
+
+
+@login_required()
+def view_backup_config_change(request):
+    """What a backup changed, as the JSON the popup shows.
+
+    The backup is compared against the one before it — the one it is a change of,
+    which is why only backups that carry a change are linked to this view.
+    """
+    if not UserAcl.objects.filter(user=request.user).filter(user_level__gte=20).exists():
+        return JsonResponse({'error': 'You are not allowed to see backups.'}, status=403)
+
+    backup = RouterBackup.objects.filter(uuid=request.GET.get('uuid')).first()
+    if backup is None:
+        return JsonResponse({'error': 'Backup not found.'}, status=404)
+
+    previous = backup.previous_backup()
+    if previous is None:
+        return JsonResponse({
+            'error': 'Nothing to compare this backup with. It is the first backup that '
+                     'brought a configuration of this device.',
+        }, status=404)
+
+    diff = difflib.unified_diff(normalize_text(previous.backup_text or '').splitlines(),
+                                normalize_text(backup.backup_text or '').splitlines(),
+                                fromfile=previous.backup_text_hash[:16] + '...',
+                                tofile=backup.backup_text_hash[:16] + '...',
+                                lineterm='', n=3)
+
+    return JsonResponse({
+        'router': backup.router.name,
+        'previous': {
+            'id': previous.id,
+            'uuid': str(previous.uuid),
+            'date': backup_moment(previous),
+        },
+        'backup': {
+            'id': backup.id,
+            'uuid': str(backup.uuid),
+            'date': backup_moment(backup),
+        },
+        'compare_url': f'/backup/compare/?uuid={previous.uuid}&compare_uuid={backup.uuid}',
+        'diff': '\n'.join(diff),
+    })
 
 
 def view_debug_run_backups(request):
