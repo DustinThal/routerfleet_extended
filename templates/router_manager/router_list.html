@@ -690,20 +690,42 @@ $(document).ready(function() {
     // One filter per column, in the header cell under the title of the column.
     // Every column keeps its filter above itself, also when columns are hidden
     // or the window is narrow.
+    //
+    // The row of filters and what stands in it are remembered in the browser, so
+    // that a reload does not lose them. A remembered filter names its column by
+    // its data-column: which columns the list has is decided on the server, so an
+    // index can point at a different column on the next page load.
+    var filterStateKey = 'router_list_filters';
+
+    function readFilterState() {
+        var state = {};
+        try {
+            state = JSON.parse(window.localStorage.getItem(filterStateKey)) || {};
+        }
+        catch (error) {
+            // Nothing stored yet, or a browser that keeps no storage at all
+            state = {};
+        }
+        return typeof state === 'object' && state !== null ? state : {};
+    }
+
     function setupColumnFilters(tableApi) {
         var filterInputs = $();
         var filterBoxes = $();
+        var filterFields = [];
 
         tableApi.columns().every(function() {
             var index = this.index();
             var header = $(this.header());
-            if (!header.attr('data-column')) {
+            var columnName = header.attr('data-column');
+            if (!columnName) {
                 // The checkbox and the edit column have nothing to filter
                 return;
             }
 
             var input = $('<input type="text" class="router-column-filter form-control form-control-sm" placeholder="Filter (! excludes, (empty) blank, ^ regex)">');
             input.attr('data-column-index', index);
+            input.attr('data-column-name', columnName);
             input.attr('title', 'text finds it, !text excludes it, ^pattern is a regular ' +
                 'expression, (empty) shows the rows without a value');
             input.on('click', function(event) {
@@ -714,6 +736,8 @@ $(document).ready(function() {
                 var applied = applyRouterSearch(tableApi.column(index), input.val(), false);
                 // A regular expression that is not finished yet
                 input.toggleClass('is-invalid', applied === false);
+                // Somebody is typing in a filter, so the row of them is in use
+                saveFilterState(true);
             });
 
             var box = $('<div class="router-column-filter-box"></div>');
@@ -723,7 +747,35 @@ $(document).ready(function() {
 
             filterInputs = filterInputs.add(input);
             filterBoxes = filterBoxes.add(box);
+            filterFields.push({name: columnName, index: index, input: input});
         });
+
+        function saveFilterState(visible) {
+            // What stands in the fields now wins. The term of a column the list
+            // does not have at the moment is left where it is, so showing that
+            // column again brings its filter back.
+            var terms = readFilterState().terms;
+            if (typeof terms !== 'object' || terms === null) {
+                terms = {};
+            }
+            filterFields.forEach(function(field) {
+                var value = field.input.val();
+                if (value) {
+                    terms[field.name] = value;
+                } else {
+                    delete terms[field.name];
+                }
+            });
+
+            try {
+                window.localStorage.setItem(filterStateKey, JSON.stringify({
+                    visible: visible, terms: terms,
+                }));
+            }
+            catch (error) {
+                // A browser that keeps no storage (private mode) simply forgets
+            }
+        }
 
         function setVisible(visible) {
             if (visible) {
@@ -745,7 +797,30 @@ $(document).ready(function() {
             var visible = filterBoxes.is(':hidden');
             setVisible(visible);
             $(this).toggleClass('active', visible);
+            // What the next page load has to bring back
+            saveFilterState(visible);
         });
+
+        // What the last visit left behind: whether the row of filters was open,
+        // and what stood in them. A term whose column the list does not have at
+        // this moment is left out and stays in the storage, so hiding a column
+        // for one visit does not throw its filter away.
+        var remembered = readFilterState();
+        if (remembered.visible) {
+            setVisible(true);
+            $('#toggleColumnFilters').addClass('active');
+
+            var rememberedTerms = remembered.terms || {};
+            filterFields.forEach(function(field) {
+                var value = rememberedTerms[field.name];
+                if (!value) {
+                    return;
+                }
+                field.input.val(value);
+                var applied = applyRouterSearch(tableApi.column(field.index), value, false);
+                field.input.toggleClass('is-invalid', applied === false);
+            });
+        }
 
         return setVisible;
     }
