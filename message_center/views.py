@@ -4,6 +4,7 @@ from django.contrib import messages
 import pytz
 from router_manager.models import Router
 from routerfleet_tools.models import WebadminSettings
+from routerlib.decorators import cron_endpoint
 from user_manager.models import UserAcl
 from .forms import MessageSettingsForm, MessageChannelForm
 from .models import Notification, MessageChannel, Message, MessageSettings
@@ -41,6 +42,7 @@ def view_debug_test_messages(request):
     return JsonResponse(data)
 
 
+@cron_endpoint
 def view_cron_daily_reports(request):
     message_settings, _ = MessageSettings.objects.get_or_create(name='message_settings')
     now = timezone.now()
@@ -112,6 +114,7 @@ def view_cron_daily_reports(request):
     return JsonResponse(data)
 
 
+@cron_endpoint
 def view_cron_send_messages(request):
     data = {
         'status': 'success',
@@ -152,6 +155,7 @@ def remove_offline_notifications_for_online_routers():
     return
 
 
+@cron_endpoint
 def view_cron_concatenate_notifications(request):
     data = {
         'status': 'success',

@@ -14,6 +14,7 @@ from audit_log.bulk import collect
 from backup.models import BackupProfile
 from backup_data.models import RouterBackup
 from routerfleet_tools.models import WebadminSettings
+from routerlib.decorators import cron_endpoint
 from routerlib.router_functions import update_router_information
 from user_manager.models import UserAcl
 from .forms import RouterForm, RouterBulkEditForm, RouterGroupForm, SSHKeyForm
@@ -540,6 +541,7 @@ def _router_due_for_information_update(router_list, refresh_interval):
     return router
 
 
+@cron_endpoint
 def view_cron_update_router_information(request):
     data = {'status': 'success', 'updated': 0, 'failed': 0}
     refresh_interval = 24 #hours

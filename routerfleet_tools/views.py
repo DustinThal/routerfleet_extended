@@ -5,7 +5,10 @@ from django.conf import settings
 from django.utils import timezone
 import requests
 
+from routerlib.decorators import cron_endpoint
 
+
+@cron_endpoint
 def view_cron_check_updates(request):
     webadmin_settings, webadmin_settings_created = WebadminSettings.objects.get_or_create(name='webadmin_settings')
     webadmin_settings.cron_last_run = timezone.now()

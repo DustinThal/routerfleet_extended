@@ -9,6 +9,7 @@ from django.utils import timezone
 
 from audit_log.bulk import suspend
 from router_manager.models import Router
+from routerlib.decorators import cron_endpoint
 from user_manager.models import UserAcl
 from .command_functions import build_verification_expectations, create_jobs_from_schedules, \
     execute_command_task, create_manual_job, abort_command_task, abort_tasks_of_schedule
@@ -579,11 +580,13 @@ def view_abort_command_job(request):
     return redirect(f'/fleet_commander/job/details/?uuid={job.uuid}')
 
 
+@cron_endpoint
 def view_cron_create_command_jobs(request):
     data = create_jobs_from_schedules()
     return JsonResponse(data)
 
 
+@cron_endpoint
 def view_cron_perform_command_tasks(request):
     data = {'tasks_performed': 0}
     max_execution_time = 45

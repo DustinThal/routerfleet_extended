@@ -12,6 +12,7 @@ from message_center.functions import notify_backup_fail, notify_backup_task_lock
 from message_center.models import Message
 from router_manager.models import Router, BackupSchedule, RouterStatus
 from routerlib.backup_functions import perform_backup, append_task_console_output
+from routerlib.decorators import cron_endpoint
 
 
 def next_weekday(now, weekday, hour):
@@ -77,6 +78,7 @@ def calculate_next_backup(backup_profile):
     return next_daily_backup, next_weekly_backup, next_monthly_backup
 
 
+@cron_endpoint
 def view_cron_generate_backup_schedule(request):
     data = {
         'backup_schedule_created': 0,
@@ -174,6 +176,7 @@ def create_backup_tasks_from_schedule_list(schedule_list, schedule_type):
     return tasks_created
 
 
+@cron_endpoint
 def view_cron_create_backup_tasks(request):
     data = {
         'daily_backup_tasks_created': 0,
@@ -211,6 +214,7 @@ def view_cron_create_backup_tasks(request):
     return JsonResponse(data)
 
 
+@cron_endpoint
 def view_cron_perform_backup_tasks(request):
     data = {
         'backup_tasks_performed': 0
@@ -245,6 +249,7 @@ def view_cron_perform_backup_tasks(request):
     return JsonResponse(data)
 
 
+@cron_endpoint
 def view_cron_housekeeping(request):
     max_backup_task_age = timezone.now() - timedelta(hours=18)
     max_backup_task_lock = timezone.now() - timedelta(hours=6)
