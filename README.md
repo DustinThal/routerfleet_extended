@@ -169,6 +169,8 @@ python manage.py prune_audit_log --older-than 365 [--dry-run] [--login-history |
 
 Docker images are built and published to `ghcr.io/dustinthal` by a GitHub Actions workflow on every push to `main`, and the compose files in this repository already use them. `docker compose pull` therefore picks up this fork's images, not upstream's.
 
+**The machine's own names always answer.** The container writes `ALLOWED_HOSTS` from `SERVER_ADDRESS` alone, so the installation answered that one name and refused every other — including `127.0.0.1` on the machine it runs on — with a bare `400 Bad Request`, which reads like the application being down rather than like an address that was not configured. A browser keeps `localhost` and `127.0.0.1` apart even though they are the same installation, so both are allowed now whatever `SERVER_ADDRESS` says, and both are trusted for forms as well — without that second half, signing in from one of them would come back as a CSRF error. The configured address is still added on top, so nothing about a normal installation changes.
+
 ## Features
 
 - **Centralized Backup Management:** Easily manage backups for your routers and network equipment from a single interface.

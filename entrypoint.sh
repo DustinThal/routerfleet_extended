@@ -70,8 +70,14 @@ SERVER_HOSTNAME=$(echo $SERVER_ADDRESS | cut -d ':' -f 1)
 
 cat > $PRODUCTION_SETTINGS_FILE <<EOL
 DEBUG = $DEBUG_VALUE
-ALLOWED_HOSTS = ['routerfleet', '$SERVER_HOSTNAME']
-CSRF_TRUSTED_ORIGINS = ['http://routerfleet', 'https://$SERVER_ADDRESS', 'http://$SERVER_ADDRESS']
+# localhost and 127.0.0.1 are the machine the application itself runs on, and a
+# browser keeps them apart: an installation reached as https://localhost and the
+# same one reached as https://127.0.0.1 are two different hosts to it. Both are
+# always allowed, and the address the installation is used at comes on top -
+# otherwise only the one written in SERVER_ADDRESS answers and the other one is
+# refused with 400, which reads like the application being down.
+ALLOWED_HOSTS = ['routerfleet', 'localhost', '127.0.0.1', '[::1]', '$SERVER_HOSTNAME']
+CSRF_TRUSTED_ORIGINS = ['http://routerfleet', 'https://$SERVER_ADDRESS', 'http://$SERVER_ADDRESS', 'https://localhost', 'http://localhost', 'https://127.0.0.1', 'http://127.0.0.1']
 SECRET_KEY = '$(openssl rand -base64 32)'
 $DATABASES_CONFIG
 EOL
