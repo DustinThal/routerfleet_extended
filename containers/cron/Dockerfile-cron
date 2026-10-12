@@ -8,6 +8,10 @@ COPY cron_tasks /etc/cron.d/cron_tasks
 
 # Dar permissões apropriadas
 RUN chmod 0644 /etc/cron.d/cron_tasks
+# A checkout on Windows brings a carriage return at the end of every line along,
+# and cron hands it on to curl as part of the URL - which then answers nothing
+# at all. See the note in the Dockerfile of the application.
+RUN sed -i 's/\r$//' /etc/cron.d/cron_tasks
 
 # Criar um arquivo de log para armazenar os resultados do cron
 RUN touch /var/log/cron.log

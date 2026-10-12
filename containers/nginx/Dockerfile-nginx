@@ -4,5 +4,8 @@ COPY nginx_entrypoint.sh /nginx_entrypoint.sh
 COPY virtualhost.conf /etc/nginx/virtualhost.conf.disabled
 COPY virtualhost_noredirect.conf /etc/nginx/virtualhost_noredirect.conf.disabled
 RUN chmod +x /nginx_entrypoint.sh
+# See the note in the Dockerfile of the application: a Windows checkout brings
+# CRLF along, and a shell script with it does not run on Linux
+RUN sed -i 's/\r$//' /nginx_entrypoint.sh
 ENTRYPOINT ["/nginx_entrypoint.sh"]
 CMD ["nginx", "-g", "daemon off;"]

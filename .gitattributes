@@ -1,0 +1,8 @@
+# The shell scripts of this project are executed on Linux, as they are: a
+# carriage return at the end of a shebang line makes the kernel look for an
+# interpreter called "/bin/sh\r" and refuse to run the file at all, and a
+# carriage return at the end of a line in the crontab ends up inside the URL
+# that curl is asked to fetch. A checkout on Windows writes them that way
+# unless it is told not to, which is what this file is for.
+*.sh text eol=lf
+containers/cron/cron_tasks text eol=lf
