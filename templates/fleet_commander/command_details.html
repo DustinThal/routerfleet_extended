@@ -117,8 +117,11 @@
                                             <td>
                                                 {{ schedule.next_run|default_if_none:"—" }}
                                                 {% if schedule.last_missed %}
-                                                    {# A run that was due while nothing was running. It is
-                                                       not performed late, so this is where it is said. #}
+                                                    {% comment %}
+                                                        A run that was due while nothing was running. It
+                                                        is not performed late, so this is where it is
+                                                        said.
+                                                    {% endcomment %}
                                                     <div class="text-warning small"
                                                          title="Nothing was running when this run was due, and a command is not sent hours later than it was meant to. The schedule carries on with its next run.">
                                                         <i class="fas fa-exclamation-triangle"></i>

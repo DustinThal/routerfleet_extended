@@ -21,8 +21,10 @@
                             <li class="list-group-item">
                                 <b>Router</b>
                                 <span class="float-right">
-                                {# The same place the router list leads to: the settings of the
-                                   device, with its address on them #}
+                                {% comment %}
+                                    The same place the router list leads to: the settings of the
+                                    device, with its address on them
+                                {% endcomment %}
                                 {% if task.router %}
                                     <a href="/router/details/?uuid={{ task.router.uuid }}">{{ task.router.name }}</a>
                                 {% else %}

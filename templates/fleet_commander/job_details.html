@@ -117,11 +117,13 @@
                             {% for task in task_list %}
                                 <tr>
                                     <td>
-                                        {# The device opens the way it does in the router list, so
-                                           that its address and everything else about it is one
-                                           click away from a job. A task outlives its router - the
-                                           row keeps the name the device had - and a device that is
-                                           gone has no page to open. #}
+                                        {% comment %}
+                                            The device opens the way it does in the router list, so
+                                            that its address and everything else about it is one
+                                            click away from a job. A task outlives its router - the
+                                            row keeps the name the device had - and a device that is
+                                            gone has no page to open.
+                                        {% endcomment %}
                                         {% if task.router %}
                                             <a href="/router/details/?uuid={{ task.router.uuid }}">{{ task.router.name }}</a>
                                         {% else %}
