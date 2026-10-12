@@ -421,7 +421,7 @@ def check_job_completion(job):
 
 def create_jobs_from_schedules():
     now = timezone.now()
-    data = {'jobs_created': 0, 'tasks_created': 0}
+    data = {'jobs_created': 0, 'tasks_created': 0, 'runs_missed': 0}
 
     due_schedules = CommandSchedule.objects.filter(
         enabled=True, command__enabled=True, next_run__lte=now
@@ -438,12 +438,18 @@ def create_jobs_from_schedules():
                     schedule, reason='Schedule switched off - it can no longer run')
             continue
 
+        if schedule.is_late:
+            # The moment it was due is gone, so this run does not happen: it was
+            # meant for a particular time of day, and nothing was running then.
+            # The schedule goes on with its next one instead of catching up.
+            schedule.mark_run_missed()
+            data['runs_missed'] += 1
+            continue
+
         routers = schedule.target_routers()
 
         if not routers:
-            schedule.last_run = now
-            schedule.save(update_fields=['last_run'])
-            schedule.update_next_run()
+            schedule.mark_run_done(now)
             continue
 
         job = CommandJob.objects.create(
@@ -466,9 +472,7 @@ def create_jobs_from_schedules():
             )
             data['tasks_created'] += 1
 
-        schedule.last_run = now
-        schedule.save(update_fields=['last_run'])
-        schedule.update_next_run()
+        schedule.mark_run_done(now)
 
     return data
 

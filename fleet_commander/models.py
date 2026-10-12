@@ -15,6 +15,15 @@ INTERVAL_UNIT_ERROR = ("You must specify 'd' for days, 'h' for hours, or 'm' for
 # typed back in
 INTERVAL_ONE_TIME = ('', '0', 'none', 'off', 'one time')
 
+# How late a schedule may still run. The scheduler asks every minute, so a run
+# that is more than a couple of minutes overdue was not a slow tick: nothing was
+# running at the time it was due. A command is meant for a moment of the day -
+# an update that was set for three in the morning is not the same thing sent at
+# nine, when the devices are in use - so it is not performed afterwards, it is
+# recorded as missed. An installation whose scheduler asks less often can say how
+# late a run may be in SCHEDULE_LATE_LIMIT_MINUTES.
+LATE_RUN_LIMIT_MINUTES = 2
+
 
 def parse_interval(value) -> int:
     """Minutes from an interval as it is typed: 7d, 24h, 30m.
@@ -107,6 +116,11 @@ class CommandSchedule(models.Model):
     last_run = models.DateTimeField(blank=True, null=True)
     next_run = models.DateTimeField(blank=True, null=True)
 
+    # The moment of the last run that did not happen because it was too late to
+    # perform. It is shown where the schedules are listed, and a run that does
+    # happen clears it again.
+    last_missed = models.DateTimeField(blank=True, null=True)
+
     updated = models.DateTimeField(auto_now=True)
     created = models.DateTimeField(auto_now_add=True)
     uuid = models.UUIDField(unique=True, editable=False, default=uuid.uuid4)
@@ -139,6 +153,39 @@ class CommandSchedule(models.Model):
         self.next_run = self.calculate_next_run
         self.save(update_fields=["next_run"])
         return self.next_run
+
+    @property
+    def is_late(self) -> bool:
+        """True when the moment this was due is gone and it must not run now.
+
+        A schedule is only ever waiting for its next run, which is always a
+        moment in the future when it is written - so being behind means nothing
+        ran at the time it should have. Performing it now would send the command
+        at an hour it was not meant for.
+        """
+        if not self.next_run:
+            return False
+        limit = getattr(settings, 'SCHEDULE_LATE_LIMIT_MINUTES', LATE_RUN_LIMIT_MINUTES)
+        return self.next_run < timezone.now() - timedelta(minutes=limit)
+
+    def mark_run_missed(self):
+        """Records that the run at next_run did not happen, and moves on.
+
+        The next run is the next one on the grid the schedule is on - a daily
+        schedule that was missed this morning runs tomorrow morning, not in
+        twenty-four hours - and a schedule with no repeat left has no next run
+        at all after this one.
+        """
+        self.last_missed = self.next_run
+        self.save(update_fields=['last_missed'])
+        return self.update_next_run()
+
+    def mark_run_done(self, moment=None):
+        """Records a run that happened, and moves on to the next one."""
+        self.last_run = moment if moment else timezone.now()
+        self.last_missed = None
+        self.save(update_fields=['last_run', 'last_missed'])
+        return self.update_next_run()
 
     def selected_routers(self) -> set:
         """The devices the selection brings in, the exclusions not subtracted."""
