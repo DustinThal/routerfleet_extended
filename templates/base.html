@@ -464,7 +464,12 @@
         diff2HtmlState = 'loading';
         $('<link rel="stylesheet" type="text/css" href="/static/plugins/diff2html/diff2html.min.css"/>')
             .appendTo(document.head);
-        $('<script type="text/javascript" src="/static/plugins/diff2html/diff2html.min.js"></script>')
+        // The closing tag is written with a backslash in front of its slash, and
+        // that is not a style choice: an inline script ends at the first literal
+        // "</script" wherever it stands, inside a string as well. Written plain,
+        // the browser ended this block right here, the rest of it was shown as
+        // text at the bottom of every page, and the popup never got defined.
+        $('<script type="text/javascript" src="/static/plugins/diff2html/diff2html.min.js"><\/script>')
             .on('load', function () {
                 diff2HtmlState = 'loaded';
                 if (pendingDiff) {
