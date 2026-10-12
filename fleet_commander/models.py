@@ -184,6 +184,20 @@ class CommandSchedule(models.Model):
             self.save(update_fields=["enabled"])
         return self.enabled
 
+    def delete(self, *args, **kwargs):
+        """Removes the schedule and stops what it has started.
+
+        The tasks of a schedule are not the schedule: they are rows of their own
+        and the executor walks through them one by one. Without this, removing a
+        schedule left its pending tasks behind and the command still went out
+        after the schedule was gone from every page. Stopping them first is the
+        whole point of removing it.
+        """
+        from fleet_commander.command_functions import abort_tasks_of_schedule
+
+        abort_tasks_of_schedule(self, reason='Schedule deleted')
+        return super().delete(*args, **kwargs)
+
 
 class ScheduleDefaults(models.Model):
     """What a new schedule starts out as.
@@ -272,6 +286,13 @@ class CommandVariant(models.Model):
 
 class CommandJob(models.Model):
     command = models.ForeignKey(Command, on_delete=models.PROTECT, related_name="jobs")
+    # Where the job came from, when it came from a schedule. A schedule runs
+    # again and again, so a job that was stopped is only stopped until the next
+    # time the schedule comes around - which is worth saying on the job, and it
+    # needs the link to be able to say it.
+    schedule = models.ForeignKey(CommandSchedule, on_delete=models.SET_NULL, blank=True, null=True,
+                                 related_name="jobs",
+                                 help_text="The schedule that created this job, if one did")
     user_source = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, blank=True, null=True)
     user_source_name = models.CharField(max_length=150, blank=True, null=True)
     exec_source = models.CharField(max_length=100, choices=(('schedule', 'Schedule'), ('manual', 'Manual')), default='manual')

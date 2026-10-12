@@ -195,17 +195,52 @@ def task_aborted(task):
     return CommandTask.objects.filter(pk=task.pk, status='aborted').exists()
 
 
-def abort_command_task(task, user=None):
-    """Stops a task that has not finished yet. Returns whether it was stopped."""
+def abort_command_task(task, user=None, reason=None):
+    """Stops a task that has not finished yet. Returns whether it was stopped.
+
+    The reason replaces the plain "aborted by" line where the caller knows more
+    than that somebody pressed a button - a schedule that was switched off, for
+    instance, which is worth telling apart from a job that was stopped by hand.
+    """
     if task.status != 'pending':
         return False
 
     task.status = 'aborted'
     task.next_retry = None
     task.finished_at = timezone.now()
-    task.error_message = f'Aborted by {user.username}' if user else 'Aborted'
+    task.error_message = reason or (f'Aborted by {user.username}' if user else 'Aborted')
     task.save()
     return True
+
+
+def abort_tasks_of_schedule(schedule, user=None, reason=None):
+    """Stops what a schedule has started and not finished. Returns the count.
+
+    A schedule hands out a job, and the job's tasks are executed one after the
+    other by the cron. Switching the schedule off or removing it therefore has
+    to reach into that job: the work it already dispatched is still pending, and
+    the executor does not look at the schedule, it looks at the task. Without
+    this, a cancelled schedule kept sending its command.
+    """
+    if schedule.pk is None:
+        # Without this, "the jobs of this schedule" would be the jobs of no
+        # schedule at all - every job that was started by hand
+        return 0
+
+    stopped = 0
+    touched_jobs = set()
+    for task in CommandTask.objects.filter(job__schedule=schedule, status='pending'):
+        if abort_command_task(task, user, reason):
+            stopped += 1
+            touched_jobs.add(task.job_id)
+
+    # A job whose last pending task just went away is finished now, and the
+    # counters are what the job list shows. Only the jobs that were touched:
+    # a schedule that has run a hundred times has a hundred jobs behind it.
+    for job in CommandJob.objects.filter(pk__in=touched_jobs):
+        job.update_counters()
+
+    return stopped
 
 
 def execute_command_task(task):
@@ -393,8 +428,14 @@ def create_jobs_from_schedules():
     ).select_related('command')
 
     for schedule in due_schedules:
+        was_enabled = schedule.enabled
         schedule.disable_if_invalid()
         if not schedule.enabled:
+            if was_enabled:
+                # It was switched off here because it cannot run any more, and
+                # the work of its last run is stopped with it
+                abort_tasks_of_schedule(
+                    schedule, reason='Schedule switched off - it can no longer run')
             continue
 
         routers = schedule.target_routers()
@@ -408,6 +449,7 @@ def create_jobs_from_schedules():
         job = CommandJob.objects.create(
             command=schedule.command,
             exec_source='schedule',
+            schedule=schedule,
         )
         data['jobs_created'] += 1
 

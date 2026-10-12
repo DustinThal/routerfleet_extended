@@ -57,6 +57,10 @@ The executor notices the abort and stops the payload before its next command —
 
 The same change fixes the run count: every execution used to increment the retry count, including the attempts of a verification, so a task with `max_retry 3` could show a run count of 8. Only a run of the payload counts as a retry now; the verification attempts are counted separately and bounded by the verify timeout. `max_retry` is the number of attempts a command makes in total, the first run included.
 
+**Stopping a job does not stop the schedule that created it.** A schedule runs again, so a job that was stopped only stops one run: the schedule stays switched on and creates the next job when it comes around. The job details page says so while that is the case, with the next run and a link to the page where the schedule can be switched off.
+
+**Switching a schedule off, and deleting it, stops what it has already started.** A schedule hands out a *job*, and the tasks of that job are performed one after the other by the cron — cancelling the schedule used to leave them pending, so the command still went out after it, which is not what cancelling a schedule means. The tasks that have not finished yet are set to *aborted* with the reason written on them, the job they belong to is finished, and the executor skips a pending task whose schedule is switched off. A schedule is also switched off by itself, with the same effect, when its command has no enabled variant or no device left to run on.
+
 ### Router Manager
 
 - **Bulk edit:** select routers in the list and press **Edit** to change port, username, password, SSH key, backup profile, monitoring, enabled state and internal notes for all of them at once. A blank field leaves the current value alone. The selection is handed over in a POST request and kept in the session, so editing a few hundred routers no longer overflows the URL length limit. This also fixed the same problem for *Groups* and *Run Command*.

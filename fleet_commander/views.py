@@ -11,7 +11,7 @@ from audit_log.bulk import suspend
 from router_manager.models import Router
 from user_manager.models import UserAcl
 from .command_functions import build_verification_expectations, create_jobs_from_schedules, \
-    execute_command_task, create_manual_job, abort_command_task
+    execute_command_task, create_manual_job, abort_command_task, abort_tasks_of_schedule
 from .forms import CommandForm, CommandVariantForm, CommandScheduleForm, CommandExecuteForm, \
     ScheduleDefaultsForm
 from .models import Command, CommandVariant, CommandSchedule, CommandJob, CommandTask, \
@@ -350,8 +350,14 @@ def view_manage_command_schedule(request):
         command = schedule.command
         if request.GET.get('action') == 'delete':
             if request.GET.get('confirmation') == 'delete':
+                # The tasks a schedule has created are rows of their own and the
+                # cron goes on performing them, so removing the schedule stops
+                # them first - otherwise the command still goes out after it
+                stopped = abort_tasks_of_schedule(
+                    schedule, request.user, f'Schedule deleted by {request.user.username}')
                 schedule.delete()
-                messages.success(request, 'Schedule deleted successfully')
+                messages.success(request, 'Schedule deleted successfully'
+                                 + stopped_message(stopped))
             else:
                 messages.warning(request, 'Schedule not deleted|Invalid confirmation')
             return redirect(f'/fleet_commander/command/details/?uuid={command.uuid}')
@@ -359,11 +365,24 @@ def view_manage_command_schedule(request):
         schedule = None
         command = get_object_or_404(Command, uuid=request.GET.get('command_uuid'))
 
+    # Read before the form is built. Binding a form fills the instance in from
+    # what was sent, so by the time it is valid the switch is already off and
+    # there is nothing left to compare against.
+    was_enabled = bool(schedule and schedule.enabled)
+
     form = CommandScheduleForm(request.POST or None, instance=schedule, command=command)
     if form.is_valid():
         saved = form.save()
         saved.update_next_run()
-        messages.success(request, 'Schedule saved successfully')
+
+        stopped = 0
+        if was_enabled and not saved.enabled:
+            # Switching a schedule off is meant to stop it, and what it has
+            # already dispatched is still on its way to the devices
+            stopped = abort_tasks_of_schedule(
+                saved, request.user, f'Schedule switched off by {request.user.username}')
+
+        messages.success(request, 'Schedule saved successfully' + stopped_message(stopped))
         return redirect(f'/fleet_commander/command/details/?uuid={command.uuid}')
 
     form_description_content = '''
@@ -506,6 +525,18 @@ def abort_confirmed(request):
     return request.GET.get('confirmation') == ABORT_CONFIRMATION
 
 
+def stopped_message(count):
+    """The second line of a message about work that was stopped with its schedule.
+
+    Empty when nothing was stopped, so the caller can put it straight behind the
+    message it always shows - see template_messages.html for the format.
+    """
+    if not count:
+        return ''
+    noun = 'task it had started was stopped' if count == 1 else 'tasks it had started were stopped'
+    return f'|{count} {noun}'
+
+
 @login_required()
 def view_abort_command_task(request):
     if not UserAcl.objects.filter(user=request.user, user_level__gte=20).exists():
@@ -563,6 +594,11 @@ def view_cron_perform_command_tasks(request):
         router__routerstatus__command_lock__isnull=True, router__routerstatus__backup_lock__isnull=True
     ).filter(
         Q(next_retry__isnull=True) | Q(next_retry__lte=timezone.now())
+    ).filter(
+        # The work of a schedule that is switched off does not go out, whatever
+        # is still sitting in the job it created. A job that nobody scheduled
+        # has no schedule here and is performed as it always was.
+        Q(job__schedule__isnull=True) | Q(job__schedule__enabled=True)
     ).select_related('job__command', 'router', 'command_variant')
 
     for task in pending_tasks:
