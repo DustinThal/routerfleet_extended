@@ -117,7 +117,16 @@
                             {% for task in task_list %}
                                 <tr>
                                     <td>
-                                        {{ task.router_name|default_if_none:task.router_uuid }}
+                                        {# The device opens the way it does in the router list, so
+                                           that its address and everything else about it is one
+                                           click away from a job. A task outlives its router - the
+                                           row keeps the name the device had - and a device that is
+                                           gone has no page to open. #}
+                                        {% if task.router %}
+                                            <a href="/router/details/?uuid={{ task.router.uuid }}">{{ task.router.name }}</a>
+                                        {% else %}
+                                            {{ task.router_name|default_if_none:task.router_uuid }}
+                                        {% endif %}
                                         {% if task.router.routerstatus.command_lock or task.router.routerstatus.backup_lock %}
                                             <span style="text-decoration: underline" title="Router is currently locked ||| Backup lock: {{ task.router.routerstatus.backup_lock|default_if_none:'------' }} ||| Command Lock: {{ task.router.routerstatus.command_lock|default_if_none:'------' }}">(locked)</span>
                                         {% endif %}
